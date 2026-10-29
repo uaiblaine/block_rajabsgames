@@ -56,7 +56,7 @@ class block_rajabsgames_edit_form extends block_edit_form {
 
         $badges = json_decode($badges, true);
 
-        // For each badge, check if it is in used (find in interactivevideo_completion).
+        // A badge is used when a game item of one of the course's videos places it.
         if (!empty($badges)) {
             $courseid = $this->block->page->course->id;
             $modinfo = get_fast_modinfo($courseid);
@@ -75,25 +75,30 @@ class block_rajabsgames_edit_form extends block_edit_form {
                 }
                 return false;
             });
-            $validcmid = array_map(function ($cm) {
-                return $cm->instance;
-            }, $validcm);
-            $validcmid = implode(',', $validcmid);
-            $badges = array_map(function ($badge) use ($DB, $courseid, $validcmid) {
-                $badge = (object)$badge;
-                $badge->used = false;
-                $sql = 'SELECT * FROM {interactivevideo_items} WHERE courseid = :courseid AND type = :ctype AND
-                annotationid IN (' . $validcmid . ')
-                AND content LIKE :badgeid';
-                $paramsarray = [
-                    'badgeid' => '%' . $badge->id . '%',
-                    'ctype' => 'rajabsgames',
-                    'courseid' => $courseid,
-                ];
-                $completion = $DB->record_exists_sql($sql, $paramsarray);
-                if ($completion) {
-                    $badge->used = true;
+            // One read of the course's game items instead of a LIKE per badge: a substring match on the id also
+            // matched any longer id that contained it.
+            $usedids = [];
+            $instanceids = array_values(array_map(function ($cm) {
+                return (int)$cm->instance;
+            }, $validcm));
+            if ($instanceids) {
+                [$ivsql, $ivparams] = $DB->get_in_or_equal($instanceids, SQL_PARAMS_NAMED, 'iv');
+                $contents = $DB->get_fieldset_sql(
+                    "SELECT content FROM {interactivevideo_items}
+                      WHERE courseid = :courseid AND type = :ctype AND annotationid $ivsql",
+                    ['courseid' => $courseid, 'ctype' => 'rajabsgames'] + $ivparams
+                );
+                foreach ($contents as $content) {
+                    foreach (json_decode((string)$content, true) ?: [] as $position) {
+                        if (isset($position['badgeid'])) {
+                            $usedids[(string)$position['badgeid']] = true;
+                        }
+                    }
                 }
+            }
+            $badges = array_map(function ($badge) use ($usedids) {
+                $badge = (object)$badge;
+                $badge->used = isset($usedids[(string)($badge->id ?? '')]);
                 return $badge;
             }, $badges);
         } else {

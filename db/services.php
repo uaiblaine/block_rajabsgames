@@ -35,4 +35,10 @@ $functions = [
         'type' => 'read',
         'ajax' => true,
     ],
+    'block_rajabsgames_get_video_state' => [
+        'classname' => 'block_rajabsgames\external\get_video_state',
+        'description' => 'Badges of the activity\'s course block and the viewer\'s claims for one item',
+        'type' => 'read',
+        'ajax' => true,
+    ],
 ];

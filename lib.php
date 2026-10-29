@@ -131,8 +131,9 @@ function block_rajabsgames_get_configdata($courseid) {
             $blockcontextid = context_block::instance($block->id)->id;
             $config = $block->configdata;
             $config = unserialize_object(base64_decode($config));
+            // A block that was added but never configured has empty configdata.
             $config->badges = file_rewrite_pluginfile_urls(
-                $config->badges,
+                $config->badges ?? '[]',
                 'pluginfile.php',
                 $blockcontextid,
                 'block_rajabsgames',

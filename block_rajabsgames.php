@@ -84,18 +84,20 @@ class block_rajabsgames extends block_base {
         });
 
         if (empty($validcm)) {
-            return [
+            // Set the property as well as returning it: block_base reads $this->content, not the return value.
+            $this->content = (object)[
                 'text' => '<div class="d-flex align-items-center flex-column">'
                     . '<i class="fa fa-exclamation-triangle fa-5x mb-3"></i>'
                     . '<p class="text-muted">'  . get_string('novalidinteractivevideoyet', 'block_rajabsgames') . '</p></div>',
             ];
+            return $this->content;
         }
 
-        $validcmid = array_map(function ($cm) {
-            return $cm->instance;
-        }, $validcm);
-
-        $validcmid = implode(',', $validcmid);
+        // The completion table's cmid column and the items table's annotationid both hold instance ids.
+        $instanceids = array_values(array_map(function ($cm) {
+            return (int)$cm->instance;
+        }, $validcm));
+        [$ivsql, $ivparams] = $DB->get_in_or_equal($instanceids, SQL_PARAMS_NAMED, 'iv');
 
         $sessiondata = $SESSION->{'block_rajabsgames_main_' . $this->instance->id} ?? [];
 
@@ -144,37 +146,27 @@ class block_rajabsgames extends block_base {
         }
 
         // Get my XP: sum of xp from interactivevideo_completion table.
-        $sql = 'SELECT SUM(xp) as myxp FROM {interactivevideo_completion}'
-            . ' WHERE userid = :userid AND cmid IN (' . $validcmid . ')';
-
-        $params = [
-            'userid' => $USER->id,
-            'courseid' => $courseid,
-        ];
-
-        $myxp = $DB->get_record_sql($sql, $params, IGNORE_MISSING);
+        $myxp = $DB->get_record_sql(
+            "SELECT SUM(xp) AS myxp FROM {interactivevideo_completion} WHERE userid = :userid AND cmid $ivsql",
+            ['userid' => $USER->id] + $ivparams
+        );
 
         // Get total XP: sum of xp from interactivevideo_items table.
-        $sql = 'SELECT SUM(xp) as totalxp FROM {interactivevideo_items} WHERE courseid = :courseid AND annotationid IN ('
-            . $validcmid . ')';
-
-        $params = [
-            'courseid' => $courseid,
-        ];
-
-        $totalxp = $DB->get_record_sql($sql, $params, IGNORE_MISSING);
+        $totalxp = $DB->get_record_sql(
+            "SELECT SUM(xp) AS totalxp FROM {interactivevideo_items} WHERE courseid = :courseid AND annotationid $ivsql",
+            ['courseid' => $courseid] + $ivparams
+        );
 
         if (
             $this->config->badges
             && ($this->config->showbadges == 1 || has_capability('block/rajabsgames:addinstance', $this->context))
         ) {
             // Get badges in used.
-            $sql = 'SELECT id, content FROM {interactivevideo_items} WHERE courseid = :courseid AND type = :ttype'
-                . ' AND annotationid IN (' . $validcmid . ')';
-            $usedbadges = $DB->get_records_sql($sql, [
-                'courseid' => $courseid,
-                'ttype' => 'rajabsgames',
-            ]);
+            $usedbadges = $DB->get_records_sql(
+                "SELECT id, content FROM {interactivevideo_items}
+                  WHERE courseid = :courseid AND type = :ttype AND annotationid $ivsql",
+                ['courseid' => $courseid, 'ttype' => 'rajabsgames'] + $ivparams
+            );
 
             if (!$usedbadges && !has_capability('block/rajabsgames:addinstance', $this->context)) {
                 // If not a teacher, don't show unused blocks.
@@ -188,18 +180,14 @@ class block_rajabsgames extends block_base {
                     }
                 }
 
-                // My badges.
-                $sql = 'SELECT completiondetails
-                        FROM {interactivevideo_completion}
-                        WHERE userid = :userid
-                        AND cmid IN (' . $validcmid . ')
-                        AND completiondetails LIKE :progress';
-
-                $completions = $DB->get_records_sql($sql, [
-                    'userid' => $USER->id,
-                    'courseid' => $courseid,
-                    'progress' => '%gameprogress%',
-                ], IGNORE_MISSING);
+                // My badges. The row id comes first: get_records_sql() keys on the first column, and two
+                // activities can store identical details, which would otherwise collapse into one claim.
+                $completions = $DB->get_records_sql(
+                    "SELECT id, completiondetails
+                       FROM {interactivevideo_completion}
+                      WHERE userid = :userid AND cmid $ivsql AND " . $DB->sql_like('completiondetails', ':progress'),
+                    ['userid' => $USER->id, 'progress' => '%gameprogress%'] + $ivparams
+                );
 
                 if (!$completions) {
                     $completions = [];
@@ -344,17 +332,18 @@ class block_rajabsgames extends block_base {
             }, $mygroups);
         }
 
-        if ($groupmode == VISIBLEGROUPS && $grouping != 0 && $this->config->showgroupleaderboard == 1) {
+        // A grouping with no groups has nothing to rank.
+        if ($groupmode == VISIBLEGROUPS && $grouping != 0 && $groupids && $this->config->showgroupleaderboard == 1) {
             $hasgroupleaderboard = true;
-            $sql = 'SELECT gm.groupid, SUM(c.xp) as totalxp FROM {groups_members} gm
-                JOIN {interactivevideo_completion} c ON gm.userid = c.userid
-                WHERE gm.groupid IN (' . implode(',', $groupids) . ')
-                AND c.cmid IN (' . $validcmid . ')
-                GROUP BY gm.groupid';
-            $params = [
-                'courseid' => $courseid,
-            ];
-            $gleaderboards = $DB->get_records_sql($sql, $params, IGNORE_MISSING);
+            [$groupsql, $groupparams] = $DB->get_in_or_equal(array_values($groupids), SQL_PARAMS_NAMED, 'grp');
+            $gleaderboards = $DB->get_records_sql(
+                "SELECT gm.groupid, SUM(c.xp) AS totalxp
+                   FROM {groups_members} gm
+                   JOIN {interactivevideo_completion} c ON gm.userid = c.userid
+                  WHERE gm.groupid $groupsql AND c.cmid $ivsql
+               GROUP BY gm.groupid",
+                $groupparams + $ivparams
+            );
             // Map totalxp and mine to the groups.
             $groups = array_map(function ($group) use ($gleaderboards, $groupids, $mygroupids) {
                 $gleaderboard = array_filter($gleaderboards, function ($gleaderboard) use ($group) {
@@ -400,43 +389,34 @@ class block_rajabsgames extends block_base {
             $userfields = \core_user\fields::for_userpic()->with_name()->excluding('id');
             $userfields = $userfields->get_sql('u');
             $userfields = $userfields->selects;
-            if ($groupmode == NOGROUPS) {
-                $sql = 'SELECT u.id' . $userfields
-                    . ', SUM(c.xp) as totalxp FROM {user} u JOIN {interactivevideo_completion} c ON u.id = c.userid'
-                    . ' WHERE c.cmid IN (' . $validcmid . ')'
-                    . ' GROUP BY u.id ORDER BY totalxp DESC LIMIT 5';
-            } else if ($groupmode == VISIBLEGROUPS) {
-                // In visible groups, we need to get the total xp from all groups.
-                $sql = 'SELECT u.id' . $userfields
-                    . ', SUM(c.xp) as totalxp FROM {user} u JOIN {interactivevideo_completion} c ON u.id = c.userid'
-                    . ' WHERE c.cmid IN (' . $validcmid . ')'
-                    . ' AND u.id IN (SELECT gm.userid FROM {groups_members} gm WHERE gm.groupid IN ('
-                    . implode(',', $groupids) . '))'
-                    . ' GROUP BY u.id ORDER BY totalxp DESC LIMIT 5';
-            } else if ($groupmode == SEPARATEGROUPS) {
-                // In separate groups, we need to get the total xp from the mygroups only.
-                $sql = 'SELECT u.id' . $userfields
-                    . ', SUM(c.xp) as totalxp FROM {user} u JOIN {interactivevideo_completion} c ON u.id = c.userid'
-                    . ' WHERE c.cmid IN (' . $validcmid . ')'
-                    . ' AND u.id IN (SELECT gm.userid FROM {groups_members} gm WHERE gm.groupid IN ('
-                    . implode(',', $mygroupids) . '))'
-                    . ' GROUP BY u.id ORDER BY totalxp DESC LIMIT 5';
+            // Under visible groups the board ranks every member of the grouping, under separate groups only the
+            // members of the viewer's own groups. No group to rank from means an empty board, not an IN ().
+            $membersql = '';
+            $memberparams = [];
+            $rankable = true;
+            if ($groupmode == VISIBLEGROUPS || $groupmode == SEPARATEGROUPS) {
+                $rankgroupids = array_values($groupmode == VISIBLEGROUPS ? $groupids : $mygroupids);
+                $rankable = !empty($rankgroupids);
+                if ($rankable) {
+                    [$insql, $memberparams] = $DB->get_in_or_equal($rankgroupids, SQL_PARAMS_NAMED, 'rgrp');
+                    $membersql = " AND u.id IN (SELECT gm.userid FROM {groups_members} gm WHERE gm.groupid $insql)";
+                }
             }
 
-            $groupids = implode(',', array_map(function ($group) {
-                return $group->id;
-            }, array_values($groups))); // Get the group ids.
-            $mygroupids = implode(',', array_map(function ($group) {
-                return $group->id;
-            }, $mygroups)); // Get the group ids.
-
-            $params = [
-                'courseid' => $courseid,
-                'groupids' => $groupids, // Get the group ids.
-                'mygroupids' => $mygroupids, // Get the group ids.
-            ];
-
-            $tops = $DB->get_records_sql($sql, $params, IGNORE_MISSING);
+            $tops = [];
+            if ($rankable) {
+                $tops = $DB->get_records_sql(
+                    "SELECT u.id $userfields, SUM(c.xp) AS totalxp
+                       FROM {user} u
+                       JOIN {interactivevideo_completion} c ON u.id = c.userid
+                      WHERE c.cmid $ivsql $membersql
+                   GROUP BY u.id $userfields
+                   ORDER BY totalxp DESC",
+                    $ivparams + $memberparams,
+                    0,
+                    5
+                );
+            }
 
             if (!$tops) {
                 $tops = [];

@@ -48,57 +48,29 @@ export default class RajabsGames extends Base {
                 return;
             }
 
-            // Get the config data.
-            let block = await $.ajax({
-                url: M.cfg.wwwroot + '/blocks/rajabsgames/ajax.php',
-                method: "POST",
-                dataType: "text",
-                data: {
-                    action: 'get_badges',
-                    sesskey: M.cfg.sesskey,
-                    courseid: self.course,
-                }
-            });
+            // One call returns the course's badges and the viewer's own claims; the server derives both
+            // the course and the user, so nothing here names them.
+            let state = {badges: '[]', blockid: 0, gameprogress: '[]'};
+            try {
+                state = await Ajax.call([{
+                    methodname: 'block_rajabsgames_get_video_state',
+                    args: {interactivevideoid: self.interaction, itemid: games.id},
+                }])[0];
+            } catch (err) {
+                window.console.error(err);
+            }
 
             let badges = games.content;
             badges = typeof badges === 'string' ? JSON.parse(badges || '[]') : (badges || []);
 
-            let progress = [];
-            try {
-                let progressRes = await $.ajax({
-                    url: M.cfg.wwwroot + '/blocks/rajabsgames/ajax.php',
-                    method: "POST",
-                    dataType: "text",
-                    data: {
-                        action: 'get_completiondetails',
-                        sesskey: M.cfg.sesskey,
-                        courseid: self.course,
-                        cmid: self.interaction,
-                        userid: self.userid
-                    }
-                });
-                progress = JSON.parse(progressRes || '[]');
-                if (typeof progress === 'string') {
-                    progress = JSON.parse(progress || '[]');
-                }
-                if (!Array.isArray(progress)) {
-                    progress = [];
-                }
-                progress = progress.map(x => typeof x === 'string' ? JSON.parse(x) : x);
-                progress = progress.find(x => x && x.id == games.id);
-                progress = progress ? progress.gameprogress || [] : [];
-            } catch (err) {
-                progress = [];
-            }
+            let progress = JSON.parse(state.gameprogress || '[]');
 
             if (badges.length == 0) {
                 return;
             }
 
-            block = JSON.parse(block || '{}');
-            let badgeconfig = block.badges;
-            let blockid = block.blockid;
-            badgeconfig = typeof badgeconfig === 'string' ? JSON.parse(badgeconfig || '[]') : (badgeconfig || []);
+            let badgeconfig = JSON.parse(state.badges || '[]');
+            let blockid = state.blockid;
 
             badges = badges.map(badge => {
                 badge.isblock = true;
