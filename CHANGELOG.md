@@ -3,7 +3,7 @@
 This fork of [sokunthearithmakara/block_rajabsgames](https://github.com/sokunthearithmakara/block_rajabsgames)
 supports Moodle 5.3 only, on the `MOODLE_503_STABLE` branch. It forked from upstream `779100e` (1.2).
 
-## 1.2+uai.1 (2026100506)
+## 1.2+uai.1 (2026100507)
 
 ### Security
 - The video player reads its state through the `block_rajabsgames_get_video_state` web service, which

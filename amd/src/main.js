@@ -218,22 +218,23 @@ export default class RajabsGames extends Base {
                     $(this).remove();
                 });
 
-                // The server grades the claim: it names the position, never the XP or the claim list.
                 // Read before the call: the element is removed (and its data with it) once it has faded out.
                 const uniqueid = this.getAttribute('data-name');
                 const xp = Number(this.getAttribute('data-xp'));
-                const result = await self.claimBadge(games, uniqueid);
-                if (result && result.claimed) {
-                    self.addNotification(await getString('xpearned', 'mod_interactivevideo', xp), 'success');
-                }
 
-                // Remove the badge from the list.
+                // Drop the badge before waiting for the server, or a timeupdate during the call shows it again,
+                // and after the last badge no later timeupdate is left to clear it.
                 incompletedBadges = incompletedBadges.filter(x => String(x.uniqueid) !== uniqueid);
                 if (incompletedBadges.length == 0) {
                     // Stop showing badges.
                     $(document).off('timeupdate.rajabsgamesplay');
                 }
 
+                // The server grades the claim: it names the position, never the XP or the claim list.
+                const result = await self.claimBadge(games, uniqueid);
+                if (result && result.claimed) {
+                    self.addNotification(await getString('xpearned', 'mod_interactivevideo', xp), 'success');
+                }
             });
 
         }
