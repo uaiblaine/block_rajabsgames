@@ -303,7 +303,10 @@ class block_rajabsgames extends block_base {
         $mygroupids = [];
         if ($groupmode != 0 && $grouping != 0) {
             $groups = groups_get_all_groups($courseid, 0, $grouping, 'g.*', false, true);
-            $groups = array_map(function ($group) use ($courseid, $OUTPUT, $USER) {
+            // The viewer's memberships come from core's per-request cache; groups_is_member() would cost two
+            // queries per group.
+            $mymemberships = array_flip(groups_get_user_groups($courseid, $USER->id)[0] ?? []);
+            $groups = array_map(function ($group) use ($courseid, $OUTPUT, $mymemberships) {
                 // Get picture if $group->picture is not 0.
                 // If not hiding the group picture, and the group has a picture then use it. Fallback to generic group image.
                 if ($url = get_group_picture_url($group, $courseid, true)) {
@@ -315,7 +318,7 @@ class block_rajabsgames extends block_base {
                     'name' => $group->name,
                     'pictureurl' => $group->pictureurl,
                     'id' => $group->id,
-                    'mine' => groups_is_member($group->id, $USER->id),
+                    'mine' => isset($mymemberships[$group->id]),
                 ];
             }, $groups);
 
@@ -422,8 +425,14 @@ class block_rajabsgames extends block_base {
                 $tops = [];
             }
 
+            // Under separate groups the board names no groups, so there is nothing to look up.
+            $theirgroupids = [];
+            if ($groupmode == VISIBLEGROUPS) {
+                $theirgroupids = $this->get_leader_groups(array_keys($tops), array_column($groups, 'id'));
+            }
+
             // Map to assign rank, xp, level.
-            $tops = array_map(function ($top) use ($levels, $OUTPUT, $USER, $groupmode, $grouping, $courseid, $groups, $mygroups) {
+            $tops = array_map(function ($top) use ($levels, $OUTPUT, $USER, $groupmode, $grouping, $groups, $theirgroupids) {
                 $top = (object)$top;
                 $xp = $top->totalxp;
                 $level = 1;
@@ -447,8 +456,8 @@ class block_rajabsgames extends block_base {
                     if ($groupmode == SEPARATEGROUPS) {
                         $theirgroups = [];
                     } else {
-                        $theirgroups = array_filter($groups, function ($group) use ($top) {
-                            return groups_is_member($group->id, $top->id);
+                        $theirgroups = array_filter($groups, function ($group) use ($top, $theirgroupids) {
+                            return isset($theirgroupids[$top->id][$group->id]);
                         });
                     }
                     $theirgroups = array_values($theirgroups);
@@ -518,6 +527,37 @@ class block_rajabsgames extends block_base {
             ),
         ];
         return $this->content;
+    }
+
+    /**
+     * The groups each leader belongs to, among those listed, as far as the viewer may see that membership.
+     *
+     * One query for every leader instead of groups_is_member() per leader and group. No visibility filter is
+     * needed here as long as the ids come from groups_get_all_groups(..., $participationonly = true) for the
+     * viewer: participation groups have ALL or MEMBERS visibility, the viewer is only given MEMBERS groups they
+     * belong to, and in both cases they may see who else is in them.
+     *
+     * @param array $userids Ids of the leaders.
+     * @param array $groupids Ids of the groups shown by the block.
+     * @return array Group ids keyed by user id then group id.
+     */
+    protected function get_leader_groups(array $userids, array $groupids): array {
+        global $DB;
+        if (!$userids || !$groupids) {
+            return [];
+        }
+        [$usersql, $params] = $DB->get_in_or_equal(array_values($userids), SQL_PARAMS_NAMED, 'ldr');
+        [$groupsql, $groupparams] = $DB->get_in_or_equal(array_values($groupids), SQL_PARAMS_NAMED, 'lgrp');
+        $rows = $DB->get_recordset_sql(
+            "SELECT id, userid, groupid FROM {groups_members} WHERE userid $usersql AND groupid $groupsql",
+            $params + $groupparams
+        );
+        $memberships = [];
+        foreach ($rows as $row) {
+            $memberships[(int)$row->userid][(int)$row->groupid] = true;
+        }
+        $rows->close();
+        return $memberships;
     }
 
     /**

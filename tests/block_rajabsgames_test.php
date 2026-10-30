@@ -196,6 +196,41 @@ final class block_rajabsgames_test extends \advanced_testcase {
     }
 
     /**
+     * Under visible groups a leader's icons name only participation groups, the ones whose membership the viewer
+     * may see; an OWN-visibility group the viewer shares with the leader stays hidden.
+     */
+    public function test_leader_groups_follow_group_visibility(): void {
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $iv = $generator->create_module('interactivevideo', ['course' => $course->id]);
+        $grouping = $generator->create_grouping(['courseid' => $course->id]);
+        $open = $generator->create_group(['courseid' => $course->id, 'name' => 'Open group']);
+        $own = $generator->create_group([
+            'courseid' => $course->id,
+            'name' => 'Own group',
+            'visibility' => GROUPS_VISIBILITY_OWN,
+        ]);
+        $leader = $generator->create_and_enrol($course, 'student');
+        $viewer = $generator->create_and_enrol($course, 'student');
+        foreach ([$open, $own] as $group) {
+            $generator->create_grouping_group(['groupingid' => $grouping->id, 'groupid' => $group->id]);
+            $generator->create_group_member(['groupid' => $group->id, 'userid' => $leader->id]);
+            $generator->create_group_member(['groupid' => $group->id, 'userid' => $viewer->id]);
+        }
+        // Only the leader has XP, so the viewer's own row, which may show both groups, is not on the board.
+        $this->record_xp((int)$iv->id, (int)$leader->id, 1);
+        $blockid = $this->add_block($course, ['groupmode' => VISIBLEGROUPS, 'grouping' => $grouping->id]);
+
+        $text = $this->render($blockid, $course, $viewer)->content->text;
+
+        // The leaderboard row's group icon, as leaderboard.mustache prints it.
+        $icon = fn(string $name): string => '~class="rg_group_image iv-ml-2" alt="' . $name . '" width="15"~';
+        $this->assertMatchesRegularExpression($icon('Open group'), $text);
+        $this->assertDoesNotMatchRegularExpression($icon('Own group'), $text);
+    }
+
+    /**
      * A course without interactive videos shows the notice rather than an empty, hidden block.
      */
     public function test_course_without_videos_shows_the_notice(): void {

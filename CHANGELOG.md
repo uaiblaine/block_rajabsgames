@@ -20,6 +20,11 @@ supports Moodle 5.3 only, on the `MOODLE_503_STABLE` branch. It forked from upst
 - A course without interactive videos shows its notice instead of hiding the block.
 - A block that was added but never configured no longer raises warnings when a video reads its badges.
 
+### Performance
+- Group membership is read once instead of with groups_is_member() per group and per leader: a cold render
+  under visible groups went from 129 / 489 / 1,209 queries (10 / 40 / 100 groups) to 15, and under
+  separate groups from 25 / 85 / 205 to 5 (300 students, 5 videos, measured on Moodle 5.3).
+
 ### Changed
 - Supported range narrowed to Moodle 5.3 (`supported = [503, 503]`).
 - Queries use `get_in_or_equal()` and the DML limit instead of concatenated id lists and `LIMIT`.
