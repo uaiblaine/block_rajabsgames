@@ -3,7 +3,7 @@
 This fork of [sokunthearithmakara/block_rajabsgames](https://github.com/sokunthearithmakara/block_rajabsgames)
 supports Moodle 5.3 only, on the `MOODLE_503_STABLE` branch. It forked from upstream `779100e` (1.2).
 
-## 1.2+uai.1 (2026100503)
+## 1.2+uai.1 (2026100504)
 
 ### Security
 - The video player reads its state through the `block_rajabsgames_get_video_state` web service, which
@@ -12,6 +12,9 @@ supports Moodle 5.3 only, on the `MOODLE_503_STABLE` branch. It forked from upst
   and whose `get_badges` action returned any course's badge configuration.
 
 ### Fixed
+- Both leaderboards rank only users with an active enrolment and an active account: suspended or
+  unenrolled users and deleted accounts no longer appear, nor count in their group's total. Names are
+  shown with fullname(), following the site's name display settings.
 - The block no longer fails with a SQL error under separate groups when the viewer is in no group of
   the grouping, or under visible groups when the grouping has no groups.
 - The settings form no longer fails with a SQL error when badges exist but the course has no usable
@@ -25,6 +28,8 @@ supports Moodle 5.3 only, on the `MOODLE_503_STABLE` branch. It forked from upst
   already stored keep the XP they were given.
 
 ### Performance
+- Pages showing the block load only a small refresh module; the configuration editor (with the modal
+  form) is added in editing mode, for viewers who can configure the block.
 - Group membership is read once instead of with groups_is_member() per group and per leader: a cold render
   under visible groups went from 129 / 489 / 1,209 queries (10 / 40 / 100 groups) to 15, and under
   separate groups from 25 / 85 / 205 to 5 (300 students, 5 videos, measured on Moodle 5.3).

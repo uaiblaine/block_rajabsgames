@@ -106,14 +106,15 @@ final class block_rajabsgames_test extends \advanced_testcase {
      * @param int $instanceid Interactive video instance id.
      * @param int $userid The learner.
      * @param int $itemid Game item the claim belongs to.
+     * @param int $xp XP of the row.
      */
-    private function record_xp(int $instanceid, int $userid, int $itemid): void {
+    private function record_xp(int $instanceid, int $userid, int $itemid, int $xp = 10): void {
         global $DB;
         $claims = [['id' => self::BADGEID, 'name' => 'u1', 'xp' => 10]];
         $DB->insert_record('interactivevideo_completion', (object)[
             'cmid' => $instanceid,
             'userid' => $userid,
-            'xp' => 10,
+            'xp' => $xp,
             'timecreated' => time(),
             'completiondetails' => json_encode([json_encode(['id' => $itemid, 'gameprogress' => $claims])]),
         ]);
@@ -228,6 +229,54 @@ final class block_rajabsgames_test extends \advanced_testcase {
         $icon = fn(string $name): string => '~class="rg_group_image iv-ml-2" alt="' . $name . '" width="15"~';
         $this->assertMatchesRegularExpression($icon('Open group'), $text);
         $this->assertDoesNotMatchRegularExpression($icon('Own group'), $text);
+    }
+
+    /**
+     * Both boards rank only active enrolments: a suspended enrolment or an unenrolled user drops out of the
+     * user board and out of the group's total, although their completion rows remain.
+     */
+    public function test_boards_rank_only_active_enrolments(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $iv = $generator->create_module('interactivevideo', ['course' => $course->id]);
+        $grouping = $generator->create_grouping(['courseid' => $course->id]);
+        $group = $generator->create_group(['courseid' => $course->id, 'name' => 'Red team']);
+        $generator->create_grouping_group(['groupingid' => $grouping->id, 'groupid' => $group->id]);
+        $viewer = $generator->create_and_enrol($course, 'student', ['firstname' => 'Vera', 'lastname' => 'Viewer']);
+        $suspended = $generator->create_and_enrol($course, 'student', ['firstname' => 'Sam', 'lastname' => 'Suspended']);
+        $gone = $generator->create_and_enrol($course, 'student', ['firstname' => 'Gil', 'lastname' => 'Gone']);
+        foreach ([[$viewer, 10], [$suspended, 100], [$gone, 1000]] as [$user, $xp]) {
+            $generator->create_group_member(['groupid' => $group->id, 'userid' => $user->id]);
+            $this->record_xp((int)$iv->id, (int)$user->id, 1, $xp);
+        }
+        $blockid = $this->add_block($course, ['groupmode' => VISIBLEGROUPS, 'grouping' => $grouping->id]);
+        $grouptotal = function (string $text): string {
+            $board = substr($text, strpos($text, self::GROUPBOARD));
+            preg_match('~Red team\s*</[^>]+>.*?(\d+\.\d{2})~s', $board, $match);
+            return $match[1] ?? '';
+        };
+
+        // While all three are enrolled, both boards count them: the control.
+        $text = $this->render($blockid, $course, $viewer)->content->text;
+        $this->assertStringContainsString('Sam Suspended', $text);
+        $this->assertStringContainsString('Gil Gone', $text);
+        $this->assertSame('1110.00', $grouptotal($text));
+
+        $instance = $DB->get_record('enrol', ['courseid' => $course->id, 'enrol' => 'manual']);
+        $manual = enrol_get_plugin('manual');
+        $manual->update_user_enrol($instance, $suspended->id, ENROL_USER_SUSPENDED);
+        // Unenrolling removes the group membership too; the completion row stays behind.
+        $manual->unenrol_user($instance, $gone->id);
+        $this->assertTrue($DB->record_exists('interactivevideo_completion', ['userid' => $gone->id]));
+
+        $text = $this->render($blockid, $course, $viewer)->content->text;
+        // The name span of leaderboard.mustache, not the picture's alt text, which carries the full name anyway.
+        $this->assertMatchesRegularExpression('~class="rg_leaderboard_name[^"]*">Vera Viewer ~', $text);
+        $this->assertStringNotContainsString('Sam Suspended', $text);
+        $this->assertStringNotContainsString('Gil Gone', $text);
+        $this->assertSame('10.00', $grouptotal($text));
     }
 
     /**

@@ -275,7 +275,7 @@ class block_rajabsgames extends block_base {
 
         $datafortemplate = (array)[
             'mypicture' => $OUTPUT->user_picture($USER, ['size' => 1]),
-            'myname' => $USER->firstname,
+            'myname' => fullname($USER),
             'myxp' => $myxp->myxp ?? 0,
             'mylevel' => $mylevel,
             'totalxp' => $totalxp->totalxp ?? 0,
@@ -335,6 +335,12 @@ class block_rajabsgames extends block_base {
             }, $mygroups);
         }
 
+        // Both boards rank only users with an active enrolment in the course and an active account: completion
+        // rows outlive an unenrolment, a suspension and a deleted account.
+        $enrolled = get_enrolled_join(\context_course::instance($courseid), 'u.id', true);
+        $activesql = "JOIN {user} u ON u.id = c.userid $enrolled->joins";
+        $activewhere = "AND $enrolled->wheres AND u.deleted = 0 AND u.suspended = 0";
+
         // A grouping with no groups has nothing to rank.
         if ($groupmode == VISIBLEGROUPS && $grouping != 0 && $groupids && $this->config->showgroupleaderboard == 1) {
             $hasgroupleaderboard = true;
@@ -343,9 +349,10 @@ class block_rajabsgames extends block_base {
                 "SELECT gm.groupid, SUM(c.xp) AS totalxp
                    FROM {groups_members} gm
                    JOIN {interactivevideo_completion} c ON gm.userid = c.userid
-                  WHERE gm.groupid $groupsql AND c.cmid $ivsql
+                   $activesql
+                  WHERE gm.groupid $groupsql AND c.cmid $ivsql $activewhere
                GROUP BY gm.groupid",
-                $groupparams + $ivparams
+                $groupparams + $ivparams + $enrolled->params
             );
             // Map totalxp and mine to the groups.
             $groups = array_map(function ($group) use ($gleaderboards, $groupids, $mygroupids) {
@@ -410,12 +417,12 @@ class block_rajabsgames extends block_base {
             if ($rankable) {
                 $tops = $DB->get_records_sql(
                     "SELECT u.id $userfields, SUM(c.xp) AS totalxp
-                       FROM {user} u
-                       JOIN {interactivevideo_completion} c ON u.id = c.userid
-                      WHERE c.cmid $ivsql $membersql
+                       FROM {interactivevideo_completion} c
+                       $activesql
+                      WHERE c.cmid $ivsql $membersql $activewhere
                    GROUP BY u.id $userfields
                    ORDER BY totalxp DESC",
-                    $ivparams + $memberparams,
+                    $ivparams + $memberparams + $enrolled->params,
                     0,
                     5
                 );
@@ -451,7 +458,7 @@ class block_rajabsgames extends block_base {
                 $top->levelname = $levelname;
                 $top->xp = $xp;
                 $top->picture = $OUTPUT->user_picture($top, ['size' => 1]);
-                $top->name = $top->firstname;
+                $top->name = fullname($top);
                 if ($groupmode != NOGROUPS && $grouping != 0) {
                     if ($groupmode == SEPARATEGROUPS) {
                         $theirgroups = [];
@@ -610,16 +617,19 @@ class block_rajabsgames extends block_base {
      * @return void
      */
     public function get_required_javascript() {
-        parent::get_required_javascript();
-
         global $USER;
-        // Add the main JavaScript file for the block.
-        $this->page->requires->js_call_amd('block_rajabsgames/block_main', 'init', [
-            'blockid' => $this->instance->id,
-            'contextid' => $this->context->id,
-            'courseid' => $this->page->course->id,
-            'userid' => $USER->id,
-        ]);
+        parent::get_required_javascript();
+        $this->page->requires->js_call_amd('block_rajabsgames/refresh', 'init', [(int)$this->instance->id]);
+        // The configuration editor only where the configuration can open: on this page that is the block's
+        // modal, whose fragment does not run the form template's own call. The standalone edit page has it.
+        if ($this->page->user_is_editing() && has_capability('block/rajabsgames:addinstance', $this->context)) {
+            $this->page->requires->js_call_amd('block_rajabsgames/block_main', 'init', [
+                (int)$this->instance->id,
+                (int)$this->context->id,
+                (int)$this->page->course->id,
+                (int)$USER->id,
+            ]);
+        }
     }
 
     /**

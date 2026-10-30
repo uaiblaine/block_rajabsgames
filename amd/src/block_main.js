@@ -14,8 +14,9 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * The block's own page behaviour: the levels and badges editor of its configuration form, and the refresh
- * button of its content.
+ * The levels and badges editor of the block's configuration form. The content's refresh button lives in
+ * block_rajabsgames/refresh, so that a page shows the block without loading this module unless it is in
+ * editing mode.
  *
  * Every handler is delegated from the document under the click.rajabsgames namespace and to selectors
  * inside the plugin's roots (.block-rajabsgames), so it neither removes nor catches other plugins' handlers.
@@ -58,11 +59,11 @@ const configBadgeItem = (badgeid) => $(CONFIG + ' .rg_badge_item').filter(functi
 });
 
 /**
- * Binds the configuration form's and the content's handlers, once per page.
+ * Binds the configuration form's handlers, once per page.
  *
- * The block's get_required_javascript() calls this on every page that shows the block; the configuration
- * form template calls it as well, for the standalone edit page where the block itself is not rendered.
- * The first call wins, so the course page keeps the ids of the block it rendered.
+ * Called by the block's get_required_javascript() on a page in editing mode, where the configuration opens in
+ * a modal, and by the configuration form template on the standalone edit page. The first call wins: the
+ * handlers are delegated, so they serve a form rendered again.
  *
  * @param {Number} blockid The block instance id
  * @param {Number} contextid The block's context id
@@ -324,22 +325,5 @@ export const init = async(blockid, contextid, courseid, userid) => {
             // Update the hidden input with the new badges array.
             $('[name=config_levels]').val(JSON.stringify(levels));
         });
-    });
-
-    let Ajax = null;
-    bindEvents('click', '.rjg-refresh', async function() {
-        // Clear the content cached in $SESSION->block_rajabsgames_main_[blockid] and reload the page.
-        if (!Ajax) {
-            Ajax = await import('core/ajax');
-        }
-        await Ajax.call([
-            {
-                methodname: 'block_rajabsgames_clear_session',
-                args: {
-                    blockinstanceid: blockid
-                }
-            }
-        ]);
-        window.location.reload();
     });
 };
