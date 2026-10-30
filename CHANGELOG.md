@@ -3,7 +3,7 @@
 This fork of [sokunthearithmakara/block_rajabsgames](https://github.com/sokunthearithmakara/block_rajabsgames)
 supports Moodle 5.3 only, on the `MOODLE_503_STABLE` branch. It forked from upstream `779100e` (1.2).
 
-## 1.2+uai.1 (2026100502)
+## 1.2+uai.1 (2026100503)
 
 ### Security
 - The video player reads its state through the `block_rajabsgames_get_video_state` web service, which
@@ -19,6 +19,10 @@ supports Moodle 5.3 only, on the `MOODLE_503_STABLE` branch. It forked from upst
 - A badge claimed in two activities counts twice even when both store identical details.
 - A course without interactive videos shows its notice instead of hiding the block.
 - A block that was added but never configured no longer raises warnings when a video reads its badges.
+- Claiming one badge recorded the game item's full XP: the form left items on the default 'manual'
+  tracking, for which Interactive video awards the item's whole XP on any save. Game items are now
+  tracked as 'complete', so a claim records its own XP; an upgrade step moves existing items. Claims
+  already stored keep the XP they were given.
 
 ### Performance
 - Group membership is read once instead of with groups_is_member() per group and per leader: a cold render

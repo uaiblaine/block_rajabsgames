@@ -36,14 +36,20 @@ class form extends \mod_interactivevideo\form\base_form {
     /**
      * Pre-processes form data before use.
      *
+     * The item earns XP badge by badge, so it is tracked as 'complete': mod_interactivevideo clamps a completion
+     * of such an item to its XP, whereas 'manual' (the column default, which this form has no field for) or
+     * 'view' records the full XP on the first claim ({@see \interactivevideo_util::constrain_completion_detail()}).
+     *
      * @param object $data The form data object.
      * @return object The processed form data object.
      */
     public function pre_processing_data($data) {
         if ($data->xp > 0) {
             $data->hascompletion = 1;
+            $data->completiontracking = 'complete';
         } else {
             $data->hascompletion = 0;
+            $data->completiontracking = 'none';
         }
 
         return $data;
