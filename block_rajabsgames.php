@@ -46,7 +46,7 @@ class block_rajabsgames extends block_base {
      * @return stdClass
      */
     public function get_content() {
-        global $OUTPUT, $USER, $DB, $SESSION;
+        global $OUTPUT, $USER, $DB;
         $courseid = $this->page->course->id;
         $hasbadge = true;
         $haslevel = true;
@@ -98,52 +98,6 @@ class block_rajabsgames extends block_base {
             return (int)$cm->instance;
         }, $validcm));
         [$ivsql, $ivparams] = $DB->get_in_or_equal($instanceids, SQL_PARAMS_NAMED, 'iv');
-
-        $sessiondata = $SESSION->{'block_rajabsgames_main_' . $this->instance->id} ?? [];
-
-        $sessiondata = (object)$sessiondata;
-
-        // Use cached session data if it is less than an hour old.
-        if (
-            isset($sessiondata->data) && $sessiondata->timecreated + 3600 > time() && isset($this->config->timeupdated)
-            && $sessiondata->timecreated > $this->config->timeupdated
-        ) {
-            $datafortemplate = $sessiondata->data;
-            // Redo the roles because teacher might switch the role.
-            if (
-                $this->config->badges && $this->config->showbadges != 1
-                && !has_capability('block/rajabsgames:addinstance', $this->context)
-            ) {
-                $datafortemplate['hasbadge'] = false;
-            }
-            if (!has_capability('block/rajabsgames:addinstance', $this->context)) {
-                $datafortemplate['badges'] = array_filter($datafortemplate['badges'], function ($badge) {
-                    return $badge->badgecount > 0;
-                });
-            }
-            if ($this->config->showlevels != 1 && !has_capability('block/rajabsgames:addinstance', $this->context)) {
-                $datafortemplate['haslevel'] = false;
-            }
-            if ($this->config->showleaderboard != 1 && !has_capability('block/rajabsgames:addinstance', $this->context)) {
-                $datafortemplate['hasleaderboard'] = false;
-            }
-            if ($this->config->showgroupleaderboard != 1 && !has_capability('block/rajabsgames:addinstance', $this->context)) {
-                $datafortemplate['hasgroupleaderboard'] = false;
-            }
-
-            $this->content = (object)[
-                'text' => $OUTPUT->render_from_template(
-                    'block_rajabsgames/main',
-                    $datafortemplate
-                ),
-            ];
-            return $this->content;
-        }
-
-        // Clear session data if it is more than an hour old.
-        if (isset($sessiondata->timecreated)) {
-            unset($SESSION->{'block_rajabsgames_main_' . $this->instance->id});
-        }
 
         // Get my XP: sum of xp from interactivevideo_completion table.
         $myxp = $DB->get_record_sql(
@@ -344,16 +298,32 @@ class block_rajabsgames extends block_base {
         // A grouping with no groups has nothing to rank.
         if ($groupmode == VISIBLEGROUPS && $grouping != 0 && $groupids && $this->config->showgroupleaderboard == 1) {
             $hasgroupleaderboard = true;
-            [$groupsql, $groupparams] = $DB->get_in_or_equal(array_values($groupids), SQL_PARAMS_NAMED, 'grp');
-            $gleaderboards = $DB->get_records_sql(
-                "SELECT gm.groupid, SUM(c.xp) AS totalxp
-                   FROM {groups_members} gm
-                   JOIN {interactivevideo_completion} c ON gm.userid = c.userid
-                   $activesql
-                  WHERE gm.groupid $groupsql AND c.cmid $ivsql $activewhere
-               GROUP BY gm.groupid",
-                $groupparams + $ivparams + $enrolled->params
-            );
+            $gleaderboards = $this->cached_board('groups', [$instanceids, array_values($groupids)], function () use (
+                $DB,
+                $groupids,
+                $ivsql,
+                $ivparams,
+                $activesql,
+                $activewhere,
+                $enrolled
+            ) {
+                [$groupsql, $groupparams] = $DB->get_in_or_equal(array_values($groupids), SQL_PARAMS_NAMED, 'grp');
+                return array_values(array_map(function ($row) {
+                    // The sum as the database formats it (two decimals), which the template prints.
+                    return ['groupid' => (int)$row->groupid, 'totalxp' => $row->totalxp];
+                }, $DB->get_records_sql(
+                    "SELECT gm.groupid, SUM(c.xp) AS totalxp
+                       FROM {groups_members} gm
+                       JOIN {interactivevideo_completion} c ON gm.userid = c.userid
+                       $activesql
+                      WHERE gm.groupid $groupsql AND c.cmid $ivsql $activewhere
+                   GROUP BY gm.groupid",
+                    $groupparams + $ivparams + $enrolled->params
+                )));
+            });
+            $gleaderboards = array_map(function ($row) {
+                return (object)$row;
+            }, $gleaderboards);
             // Map totalxp and mine to the groups.
             $groups = array_map(function ($group) use ($gleaderboards, $groupids, $mygroupids) {
                 $gleaderboard = array_filter($gleaderboards, function ($gleaderboard) use ($group) {
@@ -415,17 +385,37 @@ class block_rajabsgames extends block_base {
 
             $tops = [];
             if ($rankable) {
-                $tops = $DB->get_records_sql(
-                    "SELECT u.id $userfields, SUM(c.xp) AS totalxp
-                       FROM {interactivevideo_completion} c
-                       $activesql
-                      WHERE c.cmid $ivsql $membersql $activewhere
-                   GROUP BY u.id $userfields
-                   ORDER BY totalxp DESC",
-                    $ivparams + $memberparams + $enrolled->params,
-                    0,
-                    5
-                );
+                $buildtops = function () use (
+                    $DB,
+                    $userfields,
+                    $ivsql,
+                    $ivparams,
+                    $membersql,
+                    $memberparams,
+                    $activesql,
+                    $activewhere,
+                    $enrolled
+                ) {
+                    return array_values(array_map(function ($row) {
+                        return (array)$row;
+                    }, $DB->get_records_sql(
+                        "SELECT u.id $userfields, SUM(c.xp) AS totalxp
+                           FROM {interactivevideo_completion} c
+                           $activesql
+                          WHERE c.cmid $ivsql $membersql $activewhere
+                       GROUP BY u.id $userfields
+                       ORDER BY totalxp DESC",
+                        $ivparams + $memberparams + $enrolled->params,
+                        0,
+                        5
+                    )));
+                };
+                $rankinputs = [$instanceids, $groupmode == NOGROUPS ? [] : $rankgroupids];
+                $tops = $this->cached_board('users', $rankinputs, $buildtops);
+                // Keyed by user id again, as the code below and get_leader_groups() expect.
+                $tops = array_column(array_map(function ($row) {
+                    return (object)$row;
+                }, $tops), null, 'id');
             }
 
             if (!$tops) {
@@ -519,14 +509,6 @@ class block_rajabsgames extends block_base {
             $datafortemplate['mygroups'] = array_values($mygroups);
         }
 
-        $datafortemplate['timecreated'] = time();
-
-        // Save $datafortemplate to $_SESSION.
-        $SESSION->{'block_rajabsgames_main_' . $this->instance->id} = [
-            'data' => $datafortemplate,
-            'timecreated' => time(),
-        ];
-
         $this->content = (object)[
             'text' => $OUTPUT->render_from_template(
                 'block_rajabsgames/main',
@@ -534,6 +516,32 @@ class block_rajabsgames extends block_base {
             ),
         ];
         return $this->content;
+    }
+
+    /**
+     * A course-wide board from the application cache, built on a miss.
+     *
+     * The boards depend on every learner's progress, not the viewer's, so they are shared by all viewers whose
+     * inputs match: the key names the activities and groups the viewer's board is drawn from (visibility and
+     * separate groups make those differ between viewers). The whole course entry is dropped whenever progress,
+     * an enrolment or a group membership changes ({@see \block_rajabsgames\observer}); the definition's TTL
+     * covers what no event announces, such as the IV reconciler's repairs or a renamed user.
+     *
+     * @param string $kind The board: 'users' or 'groups'.
+     * @param array $inputs What the board is computed from, the key's other part.
+     * @param callable $build Computes the board as plain arrays, on a miss.
+     * @return array The board.
+     */
+    protected function cached_board(string $kind, array $inputs, callable $build): array {
+        $cache = \cache::make('block_rajabsgames', 'boards');
+        $courseid = (int)$this->page->course->id;
+        $boards = $cache->get($courseid) ?: [];
+        $key = $kind . '_' . sha1(json_encode($inputs));
+        if (!array_key_exists($key, $boards)) {
+            $boards[$key] = $build();
+            $cache->set($courseid, $boards);
+        }
+        return $boards[$key];
     }
 
     /**
@@ -619,7 +627,6 @@ class block_rajabsgames extends block_base {
     public function get_required_javascript() {
         global $USER;
         parent::get_required_javascript();
-        $this->page->requires->js_call_amd('block_rajabsgames/refresh', 'init', [(int)$this->instance->id]);
         // The configuration editor only where the configuration can open: on this page that is the block's
         // modal, whose fragment does not run the form template's own call. The standalone edit page has it.
         if ($this->page->user_is_editing() && has_capability('block/rajabsgames:addinstance', $this->context)) {

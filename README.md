@@ -34,9 +34,10 @@ from upstream.
 * The badges placed in a video are stored as an interaction in Interactive video's `interactivevideo_items`
   table. Learners' XP and badge claims are stored by Interactive video in `interactivevideo_completion`,
   through its own save path; Interactive video's privacy provider exports and deletes them.
-* The block keeps a per-session copy of the figures it rendered for an hour, in the core session store.
-* The leaderboard shows the first name, picture and XP of the top five participants to everyone who can
-  see the block.
+* The course-wide leaderboards are cached per course in the application cache (`boards`) and dropped when
+  progress, an enrolment or a group membership changes, or after an hour at most.
+* The leaderboard shows the full name, picture and XP of the top five participants with an active enrolment
+  to everyone who can see the block.
 
 ## Capabilities
 

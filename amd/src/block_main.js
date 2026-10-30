@@ -14,9 +14,8 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * The levels and badges editor of the block's configuration form. The content's refresh button lives in
- * block_rajabsgames/refresh, so that a page shows the block without loading this module unless it is in
- * editing mode.
+ * The levels and badges editor of the block's configuration form. A page shows the block without loading
+ * this module unless it is in editing mode.
  *
  * Every handler is delegated from the document under the click.rajabsgames namespace and to selectors
  * inside the plugin's roots (.block-rajabsgames), so it neither removes nor catches other plugins' handlers.

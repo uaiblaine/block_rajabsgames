@@ -27,13 +27,6 @@
 
 defined('MOODLE_INTERNAL') || die();
 $functions = [
-    'block_rajabsgames_clear_session' => [
-        'classname' => 'block_rajabsgames\external\session',
-        'methodname' => 'execute',
-        'description' => 'Clear the session data for a block',
-        'type' => 'read',
-        'ajax' => true,
-    ],
     'block_rajabsgames_get_video_state' => [
         'classname' => 'block_rajabsgames\external\get_video_state',
         'description' => 'Badges of the activity\'s course block and the viewer\'s claims for one item',

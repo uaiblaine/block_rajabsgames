@@ -28,6 +28,14 @@
 defined('MOODLE_INTERNAL') || die();
 
 $definitions = [
+    // The course-wide leaderboards, keyed by course id. Dropped by block_rajabsgames\observer on progress,
+    // enrolment and group membership changes; the TTL bounds what no event announces.
+    'boards' => [
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true,
+        'simpledata' => true,
+        'ttl' => HOURSECS,
+    ],
     'rajabsgames_configs' => [
         'mode' => cache_store::MODE_APPLICATION,
         'simplekeys' => true,

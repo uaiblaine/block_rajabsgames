@@ -20,8 +20,8 @@ namespace block_rajabsgames\privacy;
  * The block keeps no personal data of its own.
  *
  * Badge claims and XP are written into mod_interactivevideo's completion table through its own save path, so
- * that plugin's provider exports and deletes them. The block only reads them, and its per-session copy of the
- * rendered figures lives in the core session store for at most an hour.
+ * that plugin's provider exports and deletes them. The block only reads them; its cached leaderboards hold
+ * figures derived from them, for at most an hour, in the application cache.
  *
  * @package    block_rajabsgames
  * @copyright  2026 Anderson Blaine

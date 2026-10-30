@@ -75,7 +75,6 @@ export default class RajabsGames extends Base {
             }
 
             let badgeconfig = JSON.parse(state.badges || '[]');
-            let blockid = state.blockid;
 
             badges = badges.map(badge => {
                 badge.isblock = true;
@@ -256,17 +255,6 @@ export default class RajabsGames extends Base {
                     $(document).off('timeupdate.rajabsgamesplay');
                 }
 
-                // Clear the session.
-                if (blockid) {
-                    await Ajax.call([
-                        {
-                            methodname: 'block_rajabsgames_clear_session',
-                            args: {
-                                blockinstanceid: blockid
-                            }
-                        }
-                    ]);
-                }
             });
 
         }
@@ -451,11 +439,9 @@ export default class RajabsGames extends Base {
      *
      * @param {jQuery} $formroot The form's container
      * @param {DynamicForm} gamesform The form
-     * @returns {Function} A getter of the block id the form was submitted with
      */
     bindFormButtons($formroot, gamesform) {
         let self = this;
-        let blockid;
 
         $formroot.off('click.rajabsgames', '#cancel-submit').on('click.rajabsgames', '#cancel-submit', function(e) {
             e.preventDefault();
@@ -466,7 +452,6 @@ export default class RajabsGames extends Base {
         $formroot.off('click.rajabsgames', '#submitform-submit').on('click.rajabsgames', '#submitform-submit', function(e) {
             e.preventDefault();
             e.stopImmediatePropagation();
-            blockid = $(this).closest('form').find('input[name="blockid"]').val();
             // A validation error reloads the form, and onEditFormLoaded() binds the preview again.
             self.clearPreview();
             const event = gamesform.trigger(gamesform.events.SUBMIT_BUTTON_PRESSED);
@@ -480,29 +465,6 @@ export default class RajabsGames extends Base {
             self.onEditFormLoaded(gamesform);
             self.validateTimestampFieldValue('timestampassist', 'timestamp');
         });
-
-        return () => blockid;
-    }
-
-    /**
-     * Clears the block's content cached in the session, so the next course page shows the change.
-     *
-     * @param {Number|String} blockid The block instance id, if the form named one
-     * @returns {Promise<void>}
-     */
-    async clearBlockSession(blockid) {
-        if (!blockid) {
-            return;
-        }
-        try {
-            await Ajax.call([{
-                methodname: 'block_rajabsgames_clear_session',
-                args: {blockinstanceid: blockid},
-            }])[0];
-        } catch (err) {
-            // The block refreshes within the hour anyway: never keep the form open over this.
-            window.console.error(err);
-        }
     }
 
     /**
@@ -546,12 +508,11 @@ export default class RajabsGames extends Base {
         self.onEditFormLoaded(gamesform);
         self.validateTimestampFieldValue('timestampassist', 'timestamp');
 
-        const submittedBlockid = self.bindFormButtons($formroot, gamesform);
+        self.bindFormButtons($formroot, gamesform);
 
         gamesform.addEventListener(gamesform.events.FORM_SUBMITTED, async(e) => {
             e.preventDefault();
             e.stopImmediatePropagation();
-            await self.clearBlockSession(submittedBlockid());
             $.ajax({
                 url: M.cfg.wwwroot + '/mod/interactivevideo/ajax.php',
                 method: "POST",
@@ -603,12 +564,11 @@ export default class RajabsGames extends Base {
         self.onEditFormLoaded(gamesform);
         self.validateTimestampFieldValue('timestampassist', 'timestamp');
 
-        const submittedBlockid = self.bindFormButtons($formroot, gamesform);
+        self.bindFormButtons($formroot, gamesform);
 
         gamesform.addEventListener(gamesform.events.FORM_SUBMITTED, async(e) => {
             e.preventDefault();
             e.stopImmediatePropagation();
-            await self.clearBlockSession(submittedBlockid());
             self.annotations = self.annotations.filter(x => x.id != id);
             $.ajax({
                 url: M.cfg.wwwroot + '/mod/interactivevideo/ajax.php',

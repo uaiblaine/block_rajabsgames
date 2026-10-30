@@ -3,7 +3,7 @@
 This fork of [sokunthearithmakara/block_rajabsgames](https://github.com/sokunthearithmakara/block_rajabsgames)
 supports Moodle 5.3 only, on the `MOODLE_503_STABLE` branch. It forked from upstream `779100e` (1.2).
 
-## 1.2+uai.1 (2026100504)
+## 1.2+uai.1 (2026100505)
 
 ### Security
 - The video player reads its state through the `block_rajabsgames_get_video_state` web service, which
@@ -28,8 +28,16 @@ supports Moodle 5.3 only, on the `MOODLE_503_STABLE` branch. It forked from upst
   already stored keep the XP they were given.
 
 ### Performance
-- Pages showing the block load only a small refresh module; the configuration editor (with the modal
-  form) is added in editing mode, for viewers who can configure the block.
+- The leaderboards are cached per course in the application cache instead of each viewer's whole render in
+  the session for an hour: a viewer's own XP, level and badges are read on every render, the course-wide
+  boards are dropped when Interactive video announces a progress change (its new `progress_updated` event,
+  `progress_deleted`, `xp_overridden`) or an enrolment or group membership changes, and expire after an
+  hour at most. The "updated every hour" line, its refresh button and the `block_rajabsgames_clear_session`
+  web service are gone. Requires mod_interactivevideo 2026102900. Measured on Moodle 5.3 (300 students,
+  5 videos, 10 or 100 groups): a warm render reads 4 to 7 times in 2 to 12 ms, a cold one 5 to 21, and no
+  session carries the ~16 KB copy any more.
+- Pages showing the block load none of its JavaScript; the configuration editor (with the modal form) is
+  added in editing mode, for viewers who can configure the block.
 - Group membership is read once instead of with groups_is_member() per group and per leader: a cold render
   under visible groups went from 129 / 489 / 1,209 queries (10 / 40 / 100 groups) to 15, and under
   separate groups from 25 / 85 / 205 to 5 (300 students, 5 videos, measured on Moodle 5.3).

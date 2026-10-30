@@ -87,8 +87,8 @@ final class block_rajabsgames_test extends \advanced_testcase {
      * @return \block_rajabsgames The block, with its content built.
      */
     private function render(int $blockid, \stdClass $course, \stdClass $user): \block_rajabsgames {
-        global $DB, $SESSION;
-        unset($SESSION->{'block_rajabsgames_main_' . $blockid});
+        global $DB;
+        \cache::make('block_rajabsgames', 'boards')->purge();
         $this->setUser($user);
         $page = new \moodle_page();
         $page->set_course($course);
@@ -98,6 +98,26 @@ final class block_rajabsgames_test extends \advanced_testcase {
         $block = block_instance('rajabsgames', $DB->get_record('block_instances', ['id' => $blockid]), $page);
         $block->get_content();
         return $block;
+    }
+
+    /**
+     * Renders the block again without clearing the boards cache, as a later page view would.
+     *
+     * @param int $blockid Block instance id.
+     * @param \stdClass $course The course.
+     * @param \stdClass $user The viewer.
+     * @return string The block's content.
+     */
+    private function render_warm(int $blockid, \stdClass $course, \stdClass $user): string {
+        global $DB;
+        $this->setUser($user);
+        $page = new \moodle_page();
+        $page->set_course($course);
+        $page->set_context(\context_course::instance($course->id));
+        $page->set_pagelayout('course');
+        $page->set_pagetype('course-view-topics');
+        $block = block_instance('rajabsgames', $DB->get_record('block_instances', ['id' => $blockid]), $page);
+        return $block->get_content()->text;
     }
 
     /**
@@ -277,6 +297,104 @@ final class block_rajabsgames_test extends \advanced_testcase {
         $this->assertStringNotContainsString('Sam Suspended', $text);
         $this->assertStringNotContainsString('Gil Gone', $text);
         $this->assertSame('10.00', $grouptotal($text));
+    }
+
+    /**
+     * The boards come from the course's cache until something they rank changes: a row written without an
+     * event stays unseen, a group membership change drops the cache.
+     */
+    public function test_boards_are_cached_until_a_change_is_announced(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $iv = $generator->create_module('interactivevideo', ['course' => $course->id]);
+        $grouping = $generator->create_grouping(['courseid' => $course->id]);
+        $group = $generator->create_group(['courseid' => $course->id]);
+        $generator->create_grouping_group(['groupingid' => $grouping->id, 'groupid' => $group->id]);
+        $viewer = $generator->create_and_enrol($course, 'student', ['firstname' => 'Vera', 'lastname' => 'Viewer']);
+        $late = $generator->create_and_enrol($course, 'student', ['firstname' => 'Lou', 'lastname' => 'Late']);
+        $generator->create_group_member(['groupid' => $group->id, 'userid' => $viewer->id]);
+        $this->record_xp((int)$iv->id, (int)$viewer->id, 1, 10);
+        $this->record_xp((int)$iv->id, (int)$late->id, 1, 50);
+        $blockid = $this->add_block($course, ['groupmode' => VISIBLEGROUPS, 'grouping' => $grouping->id]);
+        $board = '~class="rg_leaderboard_name[^"]*">Lou Late ~';
+
+        // A cold render ranks the group's members: Lou is not one yet.
+        $this->assertDoesNotMatchRegularExpression($board, $this->render($blockid, $course, $viewer)->content->text);
+
+        // The second render reads the cache: fewer queries, and a membership written behind the API's back unseen.
+        $DB->insert_record('groups_members', (object)['groupid' => $group->id, 'userid' => $late->id, 'timeadded' => time()]);
+        $reads = $DB->perf_get_reads();
+        $text = $this->render_warm($blockid, $course, $viewer);
+        $warmreads = $DB->perf_get_reads() - $reads;
+        $this->assertDoesNotMatchRegularExpression($board, $text);
+        $DB->delete_records('groups_members', ['groupid' => $group->id, 'userid' => $late->id]);
+
+        // The API announces the membership, which drops the course's boards.
+        $generator->create_group_member(['groupid' => $group->id, 'userid' => $late->id]);
+        $reads = $DB->perf_get_reads();
+        $text = $this->render_warm($blockid, $course, $viewer);
+        $coldreads = $DB->perf_get_reads() - $reads;
+        $this->assertMatchesRegularExpression($board, $text);
+        $this->assertLessThan($coldreads, $warmreads);
+    }
+
+    /**
+     * Under separate groups two viewers in different groups each get their own group's board from a warm cache:
+     * the cache key carries the groups a board is drawn from.
+     */
+    public function test_cached_boards_follow_the_viewers_groups(): void {
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $iv = $generator->create_module('interactivevideo', ['course' => $course->id]);
+        $grouping = $generator->create_grouping(['courseid' => $course->id]);
+        $users = [];
+        foreach (['Ada' => 'Alpha', 'Ben' => 'Beta'] as $first => $last) {
+            $group = $generator->create_group(['courseid' => $course->id]);
+            $generator->create_grouping_group(['groupingid' => $grouping->id, 'groupid' => $group->id]);
+            $users[$first] = $generator->create_and_enrol($course, 'student', ['firstname' => $first, 'lastname' => $last]);
+            $generator->create_group_member(['groupid' => $group->id, 'userid' => $users[$first]->id]);
+            $this->record_xp((int)$iv->id, (int)$users[$first]->id, 1, 10);
+        }
+        $blockid = $this->add_block($course, ['groupmode' => SEPARATEGROUPS, 'grouping' => $grouping->id]);
+        $name = fn(string $fullname): string => '~class="rg_leaderboard_name[^"]*">' . $fullname . ' ~';
+
+        $text = $this->render($blockid, $course, $users['Ada'])->content->text;
+        $this->assertMatchesRegularExpression($name('Ada Alpha'), $text);
+        $this->assertDoesNotMatchRegularExpression($name('Ben Beta'), $text);
+
+        $text = $this->render_warm($blockid, $course, $users['Ben']);
+        $this->assertMatchesRegularExpression($name('Ben Beta'), $text);
+        $this->assertDoesNotMatchRegularExpression($name('Ada Alpha'), $text);
+    }
+
+    /**
+     * Every change the boards depend on is routed to the observer, mod_interactivevideo's progress events
+     * included.
+     */
+    public function test_board_changes_are_observed(): void {
+        $observed = [];
+        foreach (\core\event\manager::get_all_observers() as $eventname => $observers) {
+            foreach ($observers as $observer) {
+                if ($observer->callable === '\\block_rajabsgames\\observer::invalidate_boards') {
+                    $observed[] = ltrim($eventname, '\\');
+                }
+            }
+        }
+        $expected = [
+            'mod_interactivevideo\\event\\progress_updated',
+            'mod_interactivevideo\\event\\progress_deleted',
+            'mod_interactivevideo\\event\\xp_overridden',
+            'core\\event\\user_enrolment_updated',
+            'core\\event\\user_enrolment_deleted',
+            'core\\event\\group_member_added',
+            'core\\event\\group_member_removed',
+        ];
+        foreach ($expected as $eventname) {
+            $this->assertContains($eventname, $observed);
+        }
     }
 
     /**
