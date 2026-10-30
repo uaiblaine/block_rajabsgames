@@ -13,20 +13,55 @@ along with Moodle.  If not, see <http://www.gnu.org/licenses />.
 }}
 {{!
 @template block_rajabsgames/badge
-TODO describe template badge
+
+One list item per badge: the block's badge list, the block configuration form (with edit and delete
+buttons), the badge picker of the video interaction form and the badge popup on the video.
+
+Each item carries the plugin's scoping class itself, because the JavaScript renders it alone and
+drops it into containers the plugin does not own. For the same reason it is a div rather than an li:
+the popup on the video, the editor's preview and the interaction form's picker are not lists. The
+templates whose list (a div with the list role) holds the items include this one through the
+itemrole block, which they set to the listitem role; block_main sets it on the items it adds.
+
+Context variables required for this template:
+* badges - array of badges: id, name, picture, classes ('filter' greys the picture), used,
+  unused, isblock (read-only rendering), mine and badgecount (claimed and placed counts)
+
 Example context (json):
 {
+    "badges": [
+        {
+            "id": 1700000001,
+            "name": "Explorer",
+            "picture": "https://moodle.example/pluginfile.php/27/block_rajabsgames/content/0/explorer.png",
+            "classes": "filter",
+            "used": false,
+            "unused": false,
+            "isblock": true,
+            "mine": 1,
+            "badgecount": 2
+        },
+        {
+            "id": 1700000002,
+            "name": "Finisher",
+            "picture": "https://moodle.example/pluginfile.php/27/block_rajabsgames/content/0/finisher.png",
+            "classes": "",
+            "used": true,
+            "unused": false,
+            "isblock": false
+        }
+    ]
 }
 }}
 {{#badges}}
 {{^unused}}
-<li class="rg_badge_item iv-mb-2 d-inline-flex flex-column align-items-center iv-rounded-lg bg-light p-2 mb-1 justify-content-between position-relative" data-id="{{id}}">
+<div {{$itemrole}}{{/itemrole}} class="block-rajabsgames rg_badge_item iv-mb-2 d-inline-flex flex-column align-items-center iv-rounded-lg bg-light p-2 mb-1 justify-content-between position-relative" data-id="{{id}}">
     <div class="d-flex flex-column align-items-center w-100">
         <img class="rg_badge_picture {{classes}}"
              src="{{picture}}"
              alt="{{name}}"
              width="60"
-             height="60" />
+             height="60">
         <div class="rg_badge_name py-2 px-1 w-100 {{#isblock}}text-truncate{{/isblock}}" title="{{name}}">{{name}}</div>
     </div>
     {{^isblock}}
@@ -35,15 +70,17 @@ Example context (json):
                 data-id="{{id}}"
                 data-used="{{used}}"
                 type="button"
-                title="{{#str}}editbadge, block_rajabsgames{{/str}}">
-            <i class="fa fa-edit"></i>
+                title="{{#str}}editbadge, block_rajabsgames{{/str}}"
+                aria-label="{{#str}}editbadge, block_rajabsgames{{/str}}">
+            <i class="fa fa-edit" aria-hidden="true"></i>
         </button>
         {{^used}}
         <button class="btn btn-sm text-danger delete-badge"
                 data-id="{{id}}"
                 type="button"
-                title="{{#str}}deletebadge, block_rajabsgames{{/str}}">
-            <i class="fa fa-trash"></i>
+                title="{{#str}}deletebadge, block_rajabsgames{{/str}}"
+                aria-label="{{#str}}deletebadge, block_rajabsgames{{/str}}">
+            <i class="fa fa-trash" aria-hidden="true"></i>
         </button>
         {{/used}}
     </div>
@@ -54,10 +91,10 @@ Example context (json):
     {{mine}} / {{badgecount}}
     </small>
     {{^classes}}
-    <i class="fa fa-check-circle text-success badge-complete position-absolute"></i>
+    <i class="fa fa-check-circle text-success badge-complete position-absolute" aria-hidden="true"></i>
     {{/classes}}
     {{/badgecount}}
     {{/isblock}}
-</li>
+</div>
 {{/unused}}
 {{/badges}}

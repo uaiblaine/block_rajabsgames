@@ -123,7 +123,8 @@ class block_rajabsgames_edit_form extends block_edit_form {
                 'courseid' => $block->page->course->id,
                 'contextid' => $block->context->id,
                 'userid' => $USER->id,
-                'blockid' => $this->optional_param('blockid', 0, PARAM_INT),
+                // The instance itself, not a URL parameter: the standalone edit page (bui_editid) passes none.
+                'blockid' => (int)$this->block->instance->id,
             ]
         ));
 

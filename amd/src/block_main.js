@@ -14,7 +14,11 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * TODO describe module block_main
+ * The block's own page behaviour: the levels and badges editor of its configuration form, and the refresh
+ * button of its content.
+ *
+ * Every handler is delegated from the document under the click.rajabsgames namespace and to selectors
+ * inside the plugin's roots (.block-rajabsgames), so it neither removes nor catches other plugins' handlers.
  *
  * @module     block_rajabsgames/block_main
  * @copyright  2025 Sokunthearith Makara <sokunthearithmakara@gmail.com>
@@ -24,13 +28,59 @@ import $ from 'jquery';
 import ModalForm from 'core_form/modalform';
 import Template from 'core/templates';
 
+/** @var {boolean} initialised Whether init() has already bound the handlers on this page. */
+let initialised = false;
+
+/**
+ * The configuration form's root. On the course page the block's own lists sit behind the form's modal and
+ * carry the same classes, so every lookup the editor makes is confined to the form.
+ * @var {String} CONFIG
+ */
+const CONFIG = '.block-rajabsgames-config';
+
+/**
+ * Parses rendered badge or level items for the configuration form's lists, giving each the listitem role that
+ * the list templates set through their itemrole block.
+ *
+ * @param {String} html The rendered block_rajabsgames/badge or block_rajabsgames/level template
+ * @returns {jQuery} The parsed nodes
+ */
+const asListItems = (html) => $($.parseHTML(html)).filter('.block-rajabsgames').attr('role', 'listitem').end();
+
+/**
+ * The configuration form's item of one badge, matched on its id without building a selector from it.
+ *
+ * @param {Number|String} badgeid The badge id
+ * @returns {jQuery} The badge's list item, if any
+ */
+const configBadgeItem = (badgeid) => $(CONFIG + ' .rg_badge_item').filter(function() {
+    return this.getAttribute('data-id') === String(badgeid);
+});
+
+/**
+ * Binds the configuration form's and the content's handlers, once per page.
+ *
+ * The block's get_required_javascript() calls this on every page that shows the block; the configuration
+ * form template calls it as well, for the standalone edit page where the block itself is not rendered.
+ * The first call wins, so the course page keeps the ids of the block it rendered.
+ *
+ * @param {Number} blockid The block instance id
+ * @param {Number} contextid The block's context id
+ * @param {Number} courseid The course id
+ * @param {Number} userid The current user's id
+ * @returns {Promise<void>}
+ */
 export const init = async(blockid, contextid, courseid, userid) => {
-    // Add a class to the body to indicate that the block is active.
+    if (initialised) {
+        return;
+    }
+    initialised = true;
     let string = await import('core/str');
 
     const bindEvents = (event, selector, func) => {
-        // Bind click event to the "Add Badge" button.
-        $(document).off(event, selector).on(event, selector, func);
+        const namespaced = event + '.rajabsgames';
+        const scoped = '.block-rajabsgames ' + selector;
+        $(document).off(namespaced, scoped).on(namespaced, scoped, func);
     };
 
     bindEvents('click', '#add-badge', async function() {
@@ -53,7 +103,7 @@ export const init = async(blockid, contextid, courseid, userid) => {
         form.show();
 
         form.addEventListener(form.events.FORM_SUBMITTED, async(event) => {
-            $('.rg_badges_list .empty-message').remove();
+            $(CONFIG + ' .rg_badges_list .empty-message').remove();
             let response = event.detail;
             let badge = await Template.render('block_rajabsgames/badge', {
                 badges: [
@@ -65,7 +115,7 @@ export const init = async(blockid, contextid, courseid, userid) => {
                 ],
             });
             // Append the new badge to the badges list.
-            $('.rg_badges_list').append(badge);
+            $(CONFIG + ' .rg_badges_list').append(asListItems(badge));
             let badges = JSON.parse($('[name=config_badges]').val() || '[]');
             // Add the new badge to the badges array.
             if (!Array.isArray(badges)) {
@@ -84,8 +134,8 @@ export const init = async(blockid, contextid, courseid, userid) => {
     bindEvents('click', '.delete-badge', async function() {
         // Delete the badge.
         let badgeid = $(this).data('id');
-        $('.rg_badge_item[data-id="' + badgeid + '"]').remove();
-        // Update the config_badges
+        configBadgeItem(badgeid).remove();
+        // Update the config_badges.
         let badges = JSON.parse($('[name=config_badges]').val() || '[]');
         badges = badges.filter(badge => badge.id !== badgeid);
         $('[name=config_badges]').val(JSON.stringify(badges));
@@ -140,14 +190,14 @@ export const init = async(blockid, contextid, courseid, userid) => {
             badges.sort((a, b) => a.id - b.id);
             $('[name=config_badges]').val(JSON.stringify(badges));
 
-            // Replace badge in the UI;
+            // Replace the badge in the UI.
             badgedata.used = used;
             let badge = await Template.render('block_rajabsgames/badge', {
                 badges: [
                     badgedata
                 ],
             });
-            $('.rg_badge_item[data-id="' + badgeid + '"]').replaceWith(badge);
+            configBadgeItem(badgeid).replaceWith(asListItems(badge));
 
         });
     });
@@ -198,7 +248,7 @@ export const init = async(blockid, contextid, courseid, userid) => {
                 levels,
             });
             // Append the new level to the levels list.
-            $('.rg_level_list').empty().append(level);
+            $(CONFIG + ' .rg_level_list').empty().append(asListItems(level));
             // Update the hidden input with the new badges array.
             $('[name=config_levels]').val(JSON.stringify(levels));
         });
@@ -207,7 +257,7 @@ export const init = async(blockid, contextid, courseid, userid) => {
     bindEvents('click', '.delete-level', async function() {
         // Delete the level.
         let levelid = $(this).data('id');
-        // Update the config_levels
+        // Update the config_levels.
         let levels = JSON.parse($('[name=config_levels]').val() || '[]');
         levels = levels.filter(level => level.id !== levelid);
         // Sort the levels array by order.
@@ -220,7 +270,7 @@ export const init = async(blockid, contextid, courseid, userid) => {
             levels,
         });
         // Append the new level to the levels list.
-        $('.rg_level_list').empty().append(level);
+        $(CONFIG + ' .rg_level_list').empty().append(asListItems(level));
         $('[name=config_levels]').val(JSON.stringify(levels));
     });
 
@@ -270,7 +320,7 @@ export const init = async(blockid, contextid, courseid, userid) => {
                 levels,
             });
             // Append the new level to the levels list.
-            $('.rg_level_list').empty().append(level);
+            $(CONFIG + ' .rg_level_list').empty().append(asListItems(level));
             // Update the hidden input with the new badges array.
             $('[name=config_levels]').val(JSON.stringify(levels));
         });
@@ -278,7 +328,7 @@ export const init = async(blockid, contextid, courseid, userid) => {
 
     let Ajax = null;
     bindEvents('click', '.rjg-refresh', async function() {
-        // Basically clear the $SESSION->block_rajabsgames_main_[blockid] and reload the page.
+        // Clear the content cached in $SESSION->block_rajabsgames_main_[blockid] and reload the page.
         if (!Ajax) {
             Ajax = await import('core/ajax');
         }
@@ -292,6 +342,4 @@ export const init = async(blockid, contextid, courseid, userid) => {
         ]);
         window.location.reload();
     });
-
-
 };

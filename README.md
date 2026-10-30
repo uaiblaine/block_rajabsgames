@@ -1,51 +1,67 @@
-# Rajab\'s games #
+# Rajab's Games
 
-Rajab\'s games is a Moodle block plugin that allows you to gamify your course with interactive videos.
+Rajab's Games is a Moodle block that gamifies a course built on interactive videos
+(`mod_interactivevideo`): learners earn XP and badges inside the videos, climb levels, and see where they
+stand on a leaderboard on the course page.
 
-## Features ##
+This repository is a fork of
+[sokunthearithmakara/block_rajabsgames](https://github.com/sokunthearithmakara/block_rajabsgames). It
+supports **Moodle 5.3 only**, on the `MOODLE_503_STABLE` branch; `CHANGELOG.md` lists what it changes
+from upstream.
 
-* Participant leaderboard: displays top 5 participants based on their XP.
-* Group leaderboard: displays groups and their total XP.
-* Badges: create badges that can be embedded in your videos and let participants earn them.
-* Levels: create unlockable levels that participants can complete based on their XP.
-* Group support: instructor can choose between visible and separate groups. In visible groups, participant leaderboard will be calculated from the whole course and group icon will be visible. They can also see XP progress of other groups. In separate groups, participant leaderboard will be calculated from the group only, and they will not see XP progress of other groups.
+## Features
 
+* Participant leaderboard: the top five participants by XP.
+* Group leaderboard: the groups of a grouping and their total XP.
+* Badges: teachers create badges with an image, place them in videos as a "Rajab's Games" interaction, and
+  learners claim them while watching.
+* Levels: XP thresholds that learners unlock in order.
+* Group support: with visible groups the participant leaderboard ranks the whole grouping and shows each
+  leader's groups; with separate groups it ranks only the members of the viewer's own groups.
 
-## Installing via uploaded ZIP file ##
+## Requirements
 
-1. Log in to your Moodle site as an admin and go to _Site administration >
-   Plugins > Install plugins_.
-2. Upload the ZIP file with the plugin code. You should only be prompted to add
-   extra details if your plugin type is not automatically detected.
-3. Check the plugin validation report and finish the installation.
+* Moodle 5.3.
+* `mod_interactivevideo` (Interactive video), which also provides `ivplugin_richtext`, the content type
+  this plugin's interaction extends. Installing the block adds `block_rajabsgames` to Interactive video's
+  enabled content types (`mod_interactivevideo/enablecontenttypes`); uninstalling removes it.
 
-## Installing manually ##
+## Data and privacy
 
-The plugin can be also installed by putting the contents of this directory to
+* Database tables: none of its own.
+* The block's configuration (badges, levels, leaderboard and group settings) is stored in the block
+  instance, and badge images in the block's `content` file area.
+* The badges placed in a video are stored as an interaction in Interactive video's `interactivevideo_items`
+  table. Learners' XP and badge claims are stored by Interactive video in `interactivevideo_completion`,
+  through its own save path; Interactive video's privacy provider exports and deletes them.
+* The block keeps a per-session copy of the figures it rendered for an hour, in the core session store.
+* The leaderboard shows the first name, picture and XP of the top five participants to everyone who can
+  see the block.
 
-    {your/moodle/dirroot}/blocks/rajabsgames
+## Capabilities
 
-Afterwards, log in to your Moodle site as an admin and go to _Site administration >
-Notifications_ to complete the installation.
+* `block/rajabsgames:addinstance`: add the block to a course and edit its badges, levels and settings.
+  Editing teachers and managers have it by default.
 
-Alternatively, you can run
+## Settings
 
-    $ php admin/cli/upgrade.php
+The block has no site-wide settings. Each instance is configured from the block's own settings form.
 
-to complete the installation from the command line.
+## Installing
 
-## License ##
+Install the plugin into `{your/moodle/dirroot}/blocks/rajabsgames`, either by uploading the ZIP file in
+_Site administration > Plugins > Install plugins_ or by copying the files, then complete the installation
+in _Site administration > Notifications_ or with `php admin/cli/upgrade.php`.
 
-2025 Your Name <you@example.com>
+## License
 
-This program is free software: you can redistribute it and/or modify it under
-the terms of the GNU General Public License as published by the Free Software
-Foundation, either version 3 of the License, or (at your option) any later
-version.
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General
+Public License as published by the Free Software Foundation, either version 3 of the License, or (at your
+option) any later version.
 
-This program is distributed in the hope that it will be useful, but WITHOUT ANY
-WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
-PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
+implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
+for more details.
 
-You should have received a copy of the GNU General Public License along with
-this program.  If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License along with this program. If not, see
+<https://www.gnu.org/licenses/>.

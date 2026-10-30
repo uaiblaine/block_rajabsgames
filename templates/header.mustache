@@ -13,9 +13,37 @@ along with Moodle.  If not, see <http://www.gnu.org/licenses />.
 }}
 {{!
 @template block_rajabsgames/header
-TODO describe template header
+
+The viewer's summary at the top of the course block: picture, name, groups and XP and level progress bars.
+
+Context variables required for this template:
+* mypicture - the viewer's user picture (trusted HTML from user_picture())
+* myname - the viewer's first name
+* mygroups - array of the viewer's groups: name, pictureurl
+* myxp, totalxp - XP earned and available
+* xppercentage - myxp as a percentage of totalxp; always set, 0 when the course has no XP
+* xpcompleted - whether every XP was earned
+* haslevel - whether the level progress bar is shown
+* mylevel, totallevel - level reached and level count
+* levelpercentage - mylevel as a percentage of totallevel; always set, 0 when there are no levels
+* levelcompleted - whether the last level was reached
+
 Example context (json):
 {
+    "mypicture": "<img src=\"https://moodle.example/theme/image.php/boost/core/1/u/f2\" class=\"userpicture\" width=\"35\" height=\"35\" alt=\"\">",
+    "myname": "Ana",
+    "mygroups": [
+        {"name": "Group A", "pictureurl": "https://moodle.example/theme/image.php/boost/core/1/g/g1"}
+    ],
+    "myxp": 30,
+    "totalxp": 120,
+    "xppercentage": 25,
+    "xpcompleted": false,
+    "haslevel": true,
+    "mylevel": 1,
+    "totallevel": 2,
+    "levelpercentage": 50,
+    "levelcompleted": false
 }
 }}
 <div class="rg_header d-flex align-items-start justify-content-between mb-3 flex-column w-100 px-2">
@@ -30,37 +58,39 @@ Example context (json):
                  width="20"
                  height="20"
                  title="{{name}}">
-        {{/mygroups}}
+            {{/mygroups}}
+        </div>
     </div>
-</div>
-<div class="small d-flex flex-column w-100 mt-3">
-    <div class="progress"
-         role="progressbar"
-         aria-valuenow="{{xppercentage}}"
-         aria-valuemin="0"
-         aria-valuemax="100"
-         style="height: 5px">
-        <div class="progress-bar {{#xpcompleted}}bg-success{{/xpcompleted}}"
-             style="width: {{xppercentage}}%"></div>
+    <div class="small d-flex flex-column w-100 mt-3">
+        <div class="progress"
+             role="progressbar"
+             aria-label="{{#str}}xp, block_rajabsgames{{/str}}"
+             aria-valuenow="{{xppercentage}}"
+             aria-valuemin="0"
+             aria-valuemax="100"
+             style="height: 5px">
+            <div class="progress-bar {{#xpcompleted}}bg-success{{/xpcompleted}}"
+                 style="width: {{xppercentage}}%"></div>
+        </div>
+        <div class="d-flex justify-content-between">
+            <span class="rg_leaderboard_xp">{{#str}}xp, block_rajabsgames{{/str}}: {{myxp}}</span>
+            <span>/ {{totalxp}}</span>
+        </div>
+        {{#haslevel}}
+        <div class="progress mt-2"
+             role="progressbar"
+             aria-label="{{#str}}level, block_rajabsgames{{/str}}"
+             aria-valuenow="{{levelpercentage}}"
+             aria-valuemin="0"
+             aria-valuemax="100"
+             style="height: 5px">
+            <div class="progress-bar {{#levelcompleted}}bg-success{{/levelcompleted}}"
+                 style="width: {{levelpercentage}}%"></div>
+        </div>
+        <div class="d-flex justify-content-between">
+            <span class="rg_leaderboard_level">{{#str}}level, block_rajabsgames{{/str}}: {{mylevel}}</span>
+            <span>/ {{totallevel}}</span>
+        </div>
+        {{/haslevel}}
     </div>
-    <div class="d-flex justify-content-between">
-        <span class="rg_leaderboard_xp">{{#str}}xp, block_rajabsgames{{/str}}: {{myxp}}</span>
-        <span>/ {{totalxp}}</span>
-    </div>
-    {{#haslevel}}
-    <div class="progress mt-2"
-         role="progressbar"
-         aria-valuenow="{{levelpercentage}}"
-         aria-valuemin="0"
-         aria-valuemax="100"
-         style="height: 5px">
-        <div class="progress-bar {{#levelcompleted}}bg-success{{/levelcompleted}}"
-             style="width: {{levelpercentage}}%"></div>
-    </div>
-    <div class="d-flex justify-content-between">
-        <span class="rg_leaderboard_level">{{#str}}level, block_rajabsgames{{/str}}: {{mylevel}}</span>
-        <span>/ {{totallevel}}</span>
-    </div>
-    {{/haslevel}}
-</div>
 </div>

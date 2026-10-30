@@ -17,14 +17,7 @@
 namespace block_rajabsgames;
 
 /**
- * Class main
- *
- * @package    block_rajabsgames
- * @copyright  2025 Sokunthearith Makara <sokunthearithmakara@gmail.com>
- * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- */
-/**
- * Class main
+ * The Rajab's Games content type that mod_interactivevideo loads through block_rajabsgames_ivplugin().
  *
  * @package    block_rajabsgames
  * @copyright  2024 Sokunthearith Makara <sokunthearithmakara@gmail.com>
@@ -56,9 +49,10 @@ class main extends \ivplugin_richtext\main {
     }
 
     /**
-     * Get the content.
-     * @param array $arg The argument.
-     * @return string The content.
+     * No server-rendered content: this type's player module (block_rajabsgames/main) draws everything itself.
+     *
+     * @param array $arg The arguments.
+     * @return bool Always true.
      */
     public function get_content($arg) {
         return true;

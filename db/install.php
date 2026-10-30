@@ -31,7 +31,8 @@
  */
 function xmldb_block_rajabsgames_install() {
     $config = get_config('mod_interactivevideo', 'enablecontenttypes');
-    $config = explode(',', $config);
+    // An unset setting is an empty string, whose explode() would leave a leading empty entry.
+    $config = array_filter(explode(',', (string)$config));
     $config[] = 'block_rajabsgames';
     // Save the new configuration.
     set_config('enablecontenttypes', implode(',', $config), 'mod_interactivevideo');

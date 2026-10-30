@@ -17,14 +17,66 @@
 {{!
     @template block_rajabsgames/main
 
-    TODO describe template main
+    The course block's content: the viewer's summary, the leaderboards, levels and badges, and the refresh button.
+
+    The root carries the plugin's scoping class; block_main wires the refresh button.
+
+    Context variables required for this template:
+    * timecreated - when the content was computed (it is cached in the session for an hour)
+    * every variable of block_rajabsgames/header, leaderboard, groupleaderboard, levelblock and badgeblock
 
     Example context (json):
     {
+        "timecreated": 1793260800,
+        "mypicture": "<img src=\"https://moodle.example/theme/image.php/boost/core/1/u/f2\" class=\"userpicture\" width=\"35\" height=\"35\" alt=\"\">",
+        "myname": "Ana",
+        "mygroups": [
+            {"name": "Group A", "pictureurl": "https://moodle.example/theme/image.php/boost/core/1/g/g1"}
+        ],
+        "myxp": 120,
+        "totalxp": 160,
+        "xppercentage": 75,
+        "haslevel": true,
+        "mylevel": 1,
+        "totallevel": 2,
+        "levelpercentage": 50,
+        "levels": [
+            {"id": 1700000101, "name": "Beginner", "order": 1, "xp": 10, "completed": true, "current": false, "isblock": true},
+            {"id": 1700000102, "name": "Expert", "order": 2, "xp": 150, "completed": false, "current": true, "isblock": true}
+        ],
+        "hasleaderboard": true,
+        "topthree": [
+            {
+                "rank": 1,
+                "picture": "<img src=\"https://moodle.example/theme/image.php/boost/core/1/u/f2\" class=\"userpicture\" width=\"35\" height=\"35\" alt=\"\">",
+                "name": "Ana Souza",
+                "levelname": "Beginner",
+                "xp": 120,
+                "isuser": true,
+                "theirgroups": [
+                    {"gname": "Group A", "gpictureurl": "https://moodle.example/theme/image.php/boost/core/1/g/g1"}
+                ]
+            }
+        ],
+        "hasgroupleaderboard": true,
+        "gleaderboard": [
+            {"rank": 1, "name": "Group A", "pictureurl": "https://moodle.example/theme/image.php/boost/core/1/g/g1", "totalxp": 120, "mine": true}
+        ],
+        "hasbadge": true,
+        "badges": [
+            {
+                "id": 1700000001,
+                "name": "Explorer",
+                "picture": "https://moodle.example/pluginfile.php/27/block_rajabsgames/content/0/explorer.png",
+                "classes": "",
+                "isblock": true,
+                "mine": 2,
+                "badgecount": 2
+            }
+        ]
     }
 }}
-
-<div class="block_rajabsgames">
+<div class="block-rajabsgames block-rajabsgames-content">
 {{>block_rajabsgames/header}}
 {{>block_rajabsgames/leaderboard}}
 {{>block_rajabsgames/groupleaderboard}}
@@ -32,8 +84,8 @@
 {{>block_rajabsgames/badgeblock}}
 <div class="text-muted small mt-3 d-flex justify-content-between align-items-center">
 {{#str}}updatedeveryhour, block_rajabsgames{{/str}}: {{#userdate}} {{timecreated}}, {{#str}}strftimedatetimeshort, core_langconfig{{/str}} {{/userdate}}
-<button type="button" class="iv-ml-auto btn btn-sm btn-light rjg-refresh" title="{{#str}}refreshnow, block_rajabsgames{{/str}}">
-<i class="fa fa-refresh"></i>
+<button type="button" class="iv-ml-auto btn btn-sm btn-light rjg-refresh" title="{{#str}}refreshnow, block_rajabsgames{{/str}}" aria-label="{{#str}}refreshnow, block_rajabsgames{{/str}}">
+<i class="fa fa-refresh" aria-hidden="true"></i>
 </button>
 </div>
 </div>

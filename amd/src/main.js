@@ -14,7 +14,11 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * TODO describe module main
+ * The Rajab's Games content type of mod_interactivevideo: places the course block's badges on the video
+ * timeline, lets learners claim them for XP, and edits their positions in the interaction form.
+ *
+ * Handlers on shared elements are namespaced (rajabsgames, rajabsgamesplay) or bound to the plugin's own
+ * form container, so they neither remove nor catch other content types' handlers on the same ids.
  *
  * @module     block_rajabsgames/main
  * @copyright  2025 Sokunthearith Makara <sokunthearithmakara@gmail.com>
@@ -30,12 +34,13 @@ import {get_string as getString} from 'core/str';
 
 export default class RajabsGames extends Base {
     /**
-     * Initializes the decision plugin for interactive videos.
+     * Sets up the badges of the video's games annotation for the learner.
      *
-     * This method sets up event listeners and handles the logic for decision points
-     * within the video. If the video is not in edit mode, it filters out decision
-     * annotations and prevents skipping certain decision points based on their
-     * properties.
+     * Outside the editor, and only when the video has a games annotation: fetches the course's badges
+     * and the viewer's claims, shows the badge status bar when the annotation asks for it, and shows
+     * each unclaimed badge for five seconds from its timestamp (timeupdate), pausing the video when
+     * the annotation asks for it. Clicking a badge claims it, records the XP as the annotation's
+     * completion and clears the block's cached content.
      *
      * @method init
      */
@@ -140,35 +145,37 @@ export default class RajabsGames extends Base {
             let $badgeHTML = $('<div>' + badgeHTML + '</div>');
             const xpString = await getString('xp', 'block_rajabsgames');
             incompletedBadges = incompletedBadges.map((x) => {
-                let $el = $badgeHTML.find(`[data-id="${x.id}"]`);
-                $el = $el.clone();
+                let $el = $badgeHTML.children('.rg_badge_item').filter(function() {
+                    return this.getAttribute('data-id') === String(x.id);
+                }).first();
+                // The popup is no list: drop the item's listitem role.
+                $el = $el.clone().removeAttr('role');
                 $el.addClass('pulse-sm jellyIn');
                 $el.attr('data-name', x.uniqueid);
                 $el.attr('data-xp', x.xp);
                 if (x.xp > 0) {
-                    $el.append(`<small class="text-muted">
-                        ${x.xp} <sup>${xpString}</sup></small>`);
+                    $el.append(self.buildXpLabel(x.xp, xpString));
                 }
                 x.html = $el.prop('outerHTML');
                 x.classes = self.getPosition(x.position);
                 return x;
             });
 
-            $(document).off('timeupdate.games').on('timeupdate.games', async function(e) {
+            $(document).off('timeupdate.rajabsgamesplay').on('timeupdate.rajabsgamesplay', async function(e) {
                 const t = Number(e.originalEvent.detail.time);
                 const badge = incompletedBadges.find(x => x.timestamp <= t && x.timestamp + 5 >= t && !x.completed);
                 let $videoBlock = $('.video-block');
                 if ($videoBlock.length === 0 && $('#video-wrapper').length > 0) {
                     $videoBlock = $('<div class="video-block" aria-hidden="true"></div>').appendTo('#video-wrapper');
                 }
-                let isEmpty = $videoBlock.find('li').length == 0;
+                let isEmpty = $videoBlock.find('.rg_badge_item').length == 0;
                 if (!badge && !isEmpty) {
                     $videoBlock.empty();
                     // Remove all classes.
                     $videoBlock.attr('class', 'video-block');
                     return;
                 }
-                if ($videoBlock.find('li').length > 0) {
+                if ($videoBlock.find('.rg_badge_item').length > 0) {
                     return;
                 }
                 // If there is a matching badge on timestamp, show it.
@@ -186,13 +193,17 @@ export default class RajabsGames extends Base {
             });
 
             // Claim the badge.
-            $(document).off('click', '.video-block li').on('click', '.video-block li', async function(e) {
+            const claimSelector = '.video-block .rg_badge_item';
+            $(document).off('click.rajabsgamesplay', claimSelector).on('click.rajabsgamesplay', claimSelector, async function(e) {
                 e.preventDefault();
                 e.stopImmediatePropagation();
 
                 // Update the status bar.
                 if (games.intg2 == 1) {
-                    let bdg = $(document).find('.rg_badgestatus_item[data-id="' + $(this).attr('data-id') + '"]');
+                    const claimedid = $(this).attr('data-id');
+                    let bdg = $('.block-rajabsgames-status .rg_badgestatus_item').filter(function() {
+                        return this.getAttribute('data-id') === claimedid;
+                    });
                     if (bdg.length > 0) {
                         let count = bdg.find('.badge-count');
                         count.attr('data-count', Number(count.attr('data-count')) + 1);
@@ -241,8 +252,8 @@ export default class RajabsGames extends Base {
                 // Remove the badge from the list.
                 incompletedBadges = incompletedBadges.filter(x => x.uniqueid != $(this).data('name'));
                 if (incompletedBadges.length == 0) {
-                    // Stop the timeupdate.games event.
-                    $(document).off('timeupdate.games');
+                    // Stop showing badges.
+                    $(document).off('timeupdate.rajabsgamesplay');
                 }
 
                 // Clear the session.
@@ -302,7 +313,7 @@ export default class RajabsGames extends Base {
         const completiontime = completeTime.toLocaleString();
         completionDetails.gameprogress = details.gameprogress || [];
         completionDetails.reportView = details.reportView ||
-            `<span data${self.isBS5 ? '-bs' : ''}-toggle="tooltip" data${self.isBS5 ? '-bs' : ''}-html="true"
+            `<span data-bs-toggle="tooltip" data-bs-html="true"
                  title='<span class="d-flex flex-column align-items-start"><span><i class="bi bi-calendar iv-mr-2"></i>
                  ${completiontime}</span></span>'>
                  <i class="fa fa-${details.completed ? 'check text-success' : 'circle-o text-secondary'} "></i><br>
@@ -386,6 +397,115 @@ export default class RajabsGames extends Base {
     }
 
     /**
+     * Builds the "N XP" label a badge shows under its picture, as nodes: the XP is teacher-set data.
+     *
+     * @param {Number|String} xp The XP the badge awards
+     * @param {String} xpString The XP unit label
+     * @returns {jQuery} The label
+     */
+    buildXpLabel(xp, xpString) {
+        return $('<small class="text-muted"></small>')
+            .text(xp + ' ')
+            .append($('<sup></sup>').text(xpString));
+    }
+
+    /**
+     * Creates the interaction form's container in the editor's annotation panel.
+     *
+     * It carries the plugin's scoping class, and the form's buttons are bound on it rather than on the
+     * document: its handlers go away with it, and they run before (and stop) any handler another content
+     * type left on the document for the same button ids.
+     *
+     * @returns {jQuery} The container
+     */
+    createFormRoot() {
+        $('#annotationwrapper table').hide();
+        return $('<div id="form" class="block-rajabsgames block-rajabsgames-interaction w-100 p-3"></div>')
+            .appendTo('#annotationwrapper');
+    }
+
+    /**
+     * Removes the editor's badge preview and stops removing it on every timeupdate.
+     *
+     * @returns {void}
+     */
+    clearPreview() {
+        $('#annotation-canvas .block-rajabsgames-preview').remove();
+        $(document).off('timeupdate.rajabsgames');
+    }
+
+    /**
+     * Closes the interaction form and gives the annotation list back.
+     *
+     * @returns {void}
+     */
+    closeForm() {
+        this.clearPreview();
+        $('#annotationwrapper #form').remove();
+        $('#annotationwrapper table').show();
+        $('#addcontent, #importcontent').removeClass('no-pointer-events');
+    }
+
+    /**
+     * Binds the interaction form's cancel and submit buttons and its validation error.
+     *
+     * @param {jQuery} $formroot The form's container
+     * @param {DynamicForm} gamesform The form
+     * @returns {Function} A getter of the block id the form was submitted with
+     */
+    bindFormButtons($formroot, gamesform) {
+        let self = this;
+        let blockid;
+
+        $formroot.off('click.rajabsgames', '#cancel-submit').on('click.rajabsgames', '#cancel-submit', function(e) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            self.closeForm();
+        });
+
+        $formroot.off('click.rajabsgames', '#submitform-submit').on('click.rajabsgames', '#submitform-submit', function(e) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            blockid = $(this).closest('form').find('input[name="blockid"]').val();
+            // A validation error reloads the form, and onEditFormLoaded() binds the preview again.
+            self.clearPreview();
+            const event = gamesform.trigger(gamesform.events.SUBMIT_BUTTON_PRESSED);
+            if (!event.defaultPrevented) {
+                gamesform.submitFormAjax();
+            }
+        });
+
+        gamesform.addEventListener(gamesform.events.SERVER_VALIDATION_ERROR, (e) => {
+            e.stopImmediatePropagation();
+            self.onEditFormLoaded(gamesform);
+            self.validateTimestampFieldValue('timestampassist', 'timestamp');
+        });
+
+        return () => blockid;
+    }
+
+    /**
+     * Clears the block's content cached in the session, so the next course page shows the change.
+     *
+     * @param {Number|String} blockid The block instance id, if the form named one
+     * @returns {Promise<void>}
+     */
+    async clearBlockSession(blockid) {
+        if (!blockid) {
+            return;
+        }
+        try {
+            await Ajax.call([{
+                methodname: 'block_rajabsgames_clear_session',
+                args: {blockinstanceid: blockid},
+            }])[0];
+        } catch (err) {
+            // The block refreshes within the hour anyway: never keep the form open over this.
+            window.console.error(err);
+        }
+    }
+
+    /**
      * Add an annotation
      * @param {Array} annotations The annotations array
      * @param {number} timestamp The timestamp
@@ -416,60 +536,22 @@ export default class RajabsGames extends Base {
             hascompletion: self.prop.hascompletion ? 1 : 0,
         };
 
-        $('#annotationwrapper table').hide();
-        $('#annotationwrapper').append('<div id="form" class="w-100 p-3"></div>');
+        const $formroot = self.createFormRoot();
         $("#contentmodal").modal('hide');
         $('#addcontentdropdown a').removeClass('active');
 
-        const selector = document.querySelector(`#annotationwrapper #form`);
-        const decisionform = new DynamicForm(selector, self.prop.form);
-        decisionform.load(data);
+        const gamesform = new DynamicForm($formroot[0], self.prop.form);
+        gamesform.load(data);
 
-        self.onEditFormLoaded(decisionform);
+        self.onEditFormLoaded(gamesform);
         self.validateTimestampFieldValue('timestampassist', 'timestamp');
 
-        $(document).off('click', '#cancel-submit').on('click', '#cancel-submit', function(e) {
+        const submittedBlockid = self.bindFormButtons($formroot, gamesform);
+
+        gamesform.addEventListener(gamesform.events.FORM_SUBMITTED, async(e) => {
             e.preventDefault();
             e.stopImmediatePropagation();
-            $('#annotationwrapper #form').remove();
-            $('#annotationwrapper table').show();
-            $('#addcontent, #importcontent').removeClass('no-pointer-events');
-            // Remove preview.
-            $('#annotation-canvas #badge-preview').remove();
-        });
-
-        let blockid;
-        $(document).off('click', '#submitform-submit').on('click', '#submitform-submit', function(e) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            blockid = $(this).closest('form').find('input[name="blockid"]').val();
-            const event = decisionform.trigger(decisionform.events.SUBMIT_BUTTON_PRESSED);
-            if (!event.defaultPrevented) {
-                decisionform.submitFormAjax();
-            }
-            // Remove preview.
-            $('#annotation-canvas #badge-preview').remove();
-        });
-
-        decisionform.addEventListener(decisionform.events.SERVER_VALIDATION_ERROR, (e) => {
-            e.stopImmediatePropagation();
-            self.onEditFormLoaded(decisionform);
-            self.validateTimestampFieldValue('timestampassist', 'timestamp');
-        });
-
-        decisionform.addEventListener(decisionform.events.FORM_SUBMITTED, async(e) => {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            if (blockid) {
-                await Ajax.call([
-                    {
-                        methodname: 'block_rajabsgames_clear_session',
-                        args: {
-                            blockinstanceid: blockid
-                        }
-                    }
-                ]);
-            }
+            await self.clearBlockSession(submittedBlockid());
             $.ajax({
                 url: M.cfg.wwwroot + '/mod/interactivevideo/ajax.php',
                 method: "POST",
@@ -490,9 +572,7 @@ export default class RajabsGames extends Base {
                     });
                 }
             });
-            $('#annotationwrapper #form').remove();
-            $('#annotationwrapper table').show();
-            $('#addcontent, #importcontent').removeClass('no-pointer-events');
+            self.closeForm();
         });
     }
 
@@ -516,58 +596,20 @@ export default class RajabsGames extends Base {
         annotation.end = this.convertSecondsToHMS(this.end);
         annotation.contextid = M.cfg.contextid;
 
-        $('#annotationwrapper table').hide();
-        $('#annotationwrapper').append('<div id="form" class="w-100 p-3"></div>');
-        const selector = document.querySelector(`#annotationwrapper #form`);
-        const decisionform = new DynamicForm(selector, self.prop.form);
-        decisionform.load(annotation);
+        const $formroot = self.createFormRoot();
+        const gamesform = new DynamicForm($formroot[0], self.prop.form);
+        gamesform.load(annotation);
 
-        self.onEditFormLoaded(decisionform);
+        self.onEditFormLoaded(gamesform);
         self.validateTimestampFieldValue('timestampassist', 'timestamp');
 
-        $(document).off('click', '#cancel-submit').on('click', '#cancel-submit', function(e) {
+        const submittedBlockid = self.bindFormButtons($formroot, gamesform);
+
+        gamesform.addEventListener(gamesform.events.FORM_SUBMITTED, async(e) => {
             e.preventDefault();
             e.stopImmediatePropagation();
-            $('#annotationwrapper #form').remove();
-            $('#annotationwrapper table').show();
-            $('#addcontent, #importcontent').removeClass('no-pointer-events');
-            // Remove preview.
-            $('#annotation-canvas #badge-preview').remove();
-        });
-
-        let blockid;
-        $(document).off('click', '#submitform-submit').on('click', '#submitform-submit', function(e) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            blockid = $(this).closest('form').find('input[name="blockid"]').val();
-            const event = decisionform.trigger(decisionform.events.SUBMIT_BUTTON_PRESSED);
-            if (!event.defaultPrevented) {
-                decisionform.submitFormAjax();
-            }
-            // Remove preview.
-            $('#annotation-canvas #badge-preview').remove();
-        });
-
-        decisionform.addEventListener(decisionform.events.SERVER_VALIDATION_ERROR, (e) => {
-            e.stopImmediatePropagation();
-            self.onEditFormLoaded(decisionform);
-            self.validateTimestampFieldValue('timestampassist', 'timestamp');
-        });
-
-        decisionform.addEventListener(decisionform.events.FORM_SUBMITTED, async(e) => {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            if (blockid) {
-                await Ajax.call([
-                    {
-                        methodname: 'block_rajabsgames_clear_session',
-                        args: {
-                            blockinstanceid: blockid
-                        }
-                    }
-                ]);
-            }
-            this.annotations = this.annotations.filter(x => x.id != id);
+            await self.clearBlockSession(submittedBlockid());
+            self.annotations = self.annotations.filter(x => x.id != id);
             $.ajax({
                 url: M.cfg.wwwroot + '/mod/interactivevideo/ajax.php',
                 method: "POST",
@@ -587,18 +629,16 @@ export default class RajabsGames extends Base {
                     action: 'edit'
                 });
             });
-            $('#annotationwrapper #form').remove();
-            $('#annotationwrapper table').show();
-            $('#addcontent, #importcontent').removeClass('no-pointer-events');
+            self.closeForm();
         });
     }
 
     /**
-     * Get the position of the element.
-     * @param {String} position The position.
-     * @returns {String} The position.
+     * Get the flex alignment classes that place a badge at a position of the video.
+     * @param {String} position The position, one of the form's position names ('top-left' ... 'bottom-right')
+     * @returns {String} The classes
      */
-    getPosition(position = 'centercenter') {
+    getPosition(position = 'center-center') {
         let classes = '';
         switch (position) {
             case 'top-left':
@@ -635,7 +675,69 @@ export default class RajabsGames extends Base {
     }
 
     /**
+     * Builds one row of the badge positions list: unique name, badge, position, XP, timestamp and buttons.
+     *
+     * Built as nodes: the unique name, the badge names and the XP are teacher-set data. The selected
+     * options carry the selected attribute, which clone() copies when a row is duplicated.
+     *
+     * @param {Array} badgeoptions The course's badges: id, name
+     * @param {Array} positions The positions: name, label
+     * @param {Object} dest The row's values: uniqueid, badgeid, position, xp, timestamp
+     * @param {Boolean} deletable Whether the row's delete button is enabled
+     * @returns {jQuery} The row
+     */
+    buildDestinationRow(badgeoptions, positions, dest, deletable) {
+        const str = (id) => M.util.get_string(id, 'block_rajabsgames');
+        const $row = $('<div class="input-group mb-1"></div>');
+
+        $('<input type="text" class="uniqueid form-control">')
+            .val(dest.uniqueid || '')
+            .attr('placeholder', str('uniquename'))
+            .appendTo($row);
+
+        const $badges = $('<select class="form-select badgeoption"></select>').appendTo($row);
+        $('<option value=""></option>').text(str('selectabadge')).appendTo($badges);
+        badgeoptions.forEach((badge) => {
+            const $option = $('<option></option>').val(badge.id).text(badge.name).appendTo($badges);
+            if (badge.id == dest.badgeid) {
+                $option.attr('selected', 'selected');
+            }
+        });
+
+        const $positions = $('<select class="form-select positionoption"></select>').appendTo($row);
+        positions.forEach((position) => {
+            const $option = $('<option></option>').val(position.name).text(position.label).appendTo($positions);
+            if (position.name == (dest.position || 'center-center')) {
+                $option.attr('selected', 'selected');
+            }
+        });
+
+        $('<input type="text" class="form-control xp">')
+            .val(dest.xp || 0)
+            .attr('placeholder', str('xp'))
+            .appendTo($row);
+
+        $('<input type="text" placeholder="00:00:00" class="form-control timestamp-input">')
+            .val(this.convertSecondsToHMS(dest.timestamp))
+            .attr('title', str('rightclicktousecurrenttime'))
+            .appendTo($row);
+
+        $row.append(
+            '<button class="btn goto-dest btn-secondary px-2" type="button"><i class="bi bi-play-fill fs-25px"></i></button>',
+            '<button class="btn add-dest btn-secondary" type="button"><i class="bi bi-plus-lg fs-unset"></i></button>',
+            '<button class="btn btn-danger delete-dest" type="button"><i class="bi bi-trash3-fill fs-unset"></i></button>'
+        );
+        if (!deletable) {
+            $row.find('.delete-dest').addClass('disabled').attr('disabled', 'disabled');
+        }
+        return $row;
+    }
+
+    /**
      * Handles the loading of the edit form and initializes the destination list.
+     *
+     * Called again after a server validation error reloads the form, so every handler it binds is
+     * unbound first.
      *
      * @param {HTMLElement} form - The form element that is being edited.
      * @param {Event} event - The event that triggered the form load.
@@ -664,7 +766,6 @@ export default class RajabsGames extends Base {
             {
                 'name': 'center-center',
                 'label': M.util.get_string('centercenter', 'block_rajabsgames'),
-                'selected': 'selected'
             },
             {
                 'name': 'center-right',
@@ -684,68 +785,26 @@ export default class RajabsGames extends Base {
             }
         ];
         const checkContentField = () => {
-            if ($('[name=content]').length > 0) {
-                let dest = $('[name=content]').val();
-                let badgeoptions = $('[name=badges]').val();
+            if (body.find('[name=content]').length > 0) {
+                let dest = body.find('[name=content]').val();
+                let badgeoptions = body.find('[name=badges]').val();
                 if (badgeoptions) {
                     badgeoptions = JSON.parse(badgeoptions);
                 } else {
                     badgeoptions = [];
                 }
+                const $list = body.find('#destination-list');
                 if (dest == '' || JSON.parse(dest).length == 0) {
-                    $('#destination-list').append(`<div class="input-group mb-1 d-none">
-                <input type="text" class="uniqueid form-control" value=""
-                     placeholder="${M.util.get_string('uniquename', 'block_rajabsgames')}">
-                <select class="${self.isBS5 ? 'form-select' : 'custom-select'} badgeoption">
-                <option value="">${M.util.get_string('selectabadge', 'block_rajabsgames')}</option>
-                        ${badgeoptions.map((badge) => {
-                        return `<option value="${badge.id}">${badge.name}</option>`;
-                    }).join('')}
-                </select>
-                <select class="${self.isBS5 ? 'form-select' : 'custom-select'} positionoption">
-                        ${positions.map((position) => {
-                        return `<option value="${position.name}" ${position.selected}>${position.label}</option>`;
-                    }).join('')}
-                </select>
-                <input type="text" class="form-control xp" value="0" placeholder="${M.util.get_string('xp', 'block_rajabsgames')}">
-                <input type="text" value="${this.convertSecondsToHMS(this.start)}"
-                placeholder="00:00:00" style="max-width: 120px;" class="form-control timestamp-input"
-                 title="${M.util.get_string('rightclicktousecurrenttime', 'block_rajabsgames')}">
-                <div class="input-group-append">
-                <button class="btn goto-dest btn-secondary px-2" type="button"><i class="bi bi-play-fill fs-25px"></i></button>
-                <button class="btn add-dest btn-secondary" type="button"><i class="bi bi-plus-lg fs-unset"></i></button>
-                <button class="btn btn-danger delete-dest disabled" disabled type="button">
-                    <i class="bi bi-trash3-fill fs-unset"></i></button></div></div>`);
+                    // A hidden template row: the add button clones it.
+                    const $template = self.buildDestinationRow(badgeoptions, positions, {timestamp: self.start}, false);
+                    $template.addClass('d-none');
+                    $list.append($template);
                 } else {
                     dest = JSON.parse(dest);
                     dest.forEach((d, i) => {
-                        $('#destination-list').append(`<div class="input-group mb-1">
-                    <input type="text" class="uniqueid form-control" value="${d.uniqueid}"
-                     placeholder="${M.util.get_string('uniquename', 'block_rajabsgames')}">
-                    <select class="${self.isBS5 ? 'form-select' : 'custom-select'} badgeoption">
-                        <option value="">${M.util.get_string('selectabadge', 'block_rajabsgames')}</option>
-                                ${badgeoptions.map((badge) => {
-                            return `<option value="${badge.id}" ${badge.id == d.badgeid ? 'selected' : ''}>${badge.name}</option>`;
-                        }).join('')}
-                        </select>
-                    <select class="${self.isBS5 ? 'form-select' : 'custom-select'} positionoption">
-                            ${positions.map((position) => {
-                            return `<option value="${position.name}"
-                             ${position.name == d.position ? 'selected' : ''}>${position.label}</option>`;
-                        }).join('')}
-                    </select>
-                    <input type="text" class="form-control xp" value="${d.xp || 0}"
-                     placeholder="${M.util.get_string('xp', 'block_rajabsgames')}">
-                    <input type="text" value="${this.convertSecondsToHMS(d.timestamp)}"
-                    placeholder="00:00:00" style="max-width: 120px;" class="form-control timestamp-input"
-                     title="${M.util.get_string('rightclicktousecurrenttime', 'block_rajabsgames')}">
-                    <div class="input-group-append">
-                    <button class="btn goto-dest btn-secondary px-2" type="button"><i class="bi bi-play-fill fs-25px"></i></button>
-                    <button class="btn add-dest btn-secondary" type="button"><i class="bi bi-plus-lg fs-unset"></i></button>
-                    <button class="btn btn-danger delete-dest ${i == 0 ? 'disabled' : ''}" ${i == 0 ? 'disabled' : ''}
-                    type="button"><i class="bi bi-trash3-fill fs-unset"></i></button></div></div>`);
+                        $list.append(self.buildDestinationRow(badgeoptions, positions, d, i != 0));
                     });
-                    $('.input-group [type="text"]').trigger('input');
+                    body.find('.input-group [type="text"]').trigger('input');
                 }
             } else {
                 requestAnimationFrame(checkContentField);
@@ -754,12 +813,18 @@ export default class RajabsGames extends Base {
 
         requestAnimationFrame(checkContentField);
 
-        body.off('click', '#add-destination').on('click', '#add-destination', function() {
-            const $last = $('#destination-list .input-group').last();
+        // Bound on the form's container under the plugin's namespace, unbound first: this runs again after a
+        // validation error.
+        const bind = (event, selector, handler) => {
+            body.off(event + '.rajabsgames', selector).on(event + '.rajabsgames', selector, handler);
+        };
+
+        bind('click', '#add-destination', function() {
+            const $last = body.find('#destination-list .input-group').last();
             $last.find('.add-dest').trigger('click');
         });
 
-        body.off('click', '.input-group .add-dest').on('click', '.input-group .add-dest', async function(e) {
+        bind('click', '.input-group .add-dest', async function(e) {
             e.stopImmediatePropagation();
             let $thisrow = $(this);
             let $parent = $thisrow.closest('.input-group');
@@ -774,48 +839,50 @@ export default class RajabsGames extends Base {
             $parent.find('[type="text"]').trigger('input');
         });
 
-        body.off('click', '.input-group .delete-dest').on('click', '.input-group .delete-dest', function(e) {
+        bind('click', '.input-group .delete-dest', function(e) {
             e.stopImmediatePropagation();
             $(this).closest('.input-group').remove();
-            $('.input-group [type="text"]').trigger('input');
+            body.find('.input-group [type="text"]').trigger('input');
         });
 
-        body.off('click', '.input-group .goto-dest').on('click', '.input-group .goto-dest', async function(e) {
+        bind('click', '.input-group .goto-dest', async function(e) {
             e.stopImmediatePropagation();
-            $('#annotation-canvas #badge-preview').remove();
-            const timestamp = $(this).closest('.input-group').find('input.timestamp-input').val();
+            $('#annotation-canvas .block-rajabsgames-preview').remove();
+            const $row = $(this).closest('.input-group');
+            const timestamp = $row.find('input.timestamp-input').val();
             const seconds = self.convertHMSToSeconds(timestamp);
-            const position = $(this).closest('.input-group').find('.positionoption').val();
-            const badgeid = $(this).closest('.input-group').find('.badgeoption').val();
-            const $badge = $(`.rg_badge_item[data-id="${badgeid}"]`).clone();
-            const xp = $(this).closest('.input-group').find('.xp').val();
+            const position = $row.find('.positionoption').val();
+            const badgeid = $row.find('.badgeoption').val();
+            const $badge = body.find('.rg_badge_item').filter(function() {
+                return this.getAttribute('data-id') === badgeid;
+            }).first().clone().removeAttr('role');
+            const xp = $row.find('.xp').val();
             if (xp > 0) {
-                $badge.append(`<small class="text-muted">
-                    ${xp} <sup>${M.util.get_string('xp', 'mod_interactivevideo')}</sup></span>`);
+                $badge.append(self.buildXpLabel(xp, M.util.get_string('xp', 'block_rajabsgames')));
             }
             let classes = self.getPosition(position);
             const currentTime = await self.player.getCurrentTime();
             if (currentTime != seconds) {
                 await self.player.seek(seconds);
             }
-            $('#annotation-canvas')
-                .append($('<div id="badge-preview" class="d-flex h-100 w-100 ' + classes + ' p-2 z-index-1"></div>')
-                    .append($badge));
+            $('<div id="badge-preview" class="block-rajabsgames block-rajabsgames-preview"></div>')
+                .addClass('d-flex h-100 w-100 p-2 z-index-1 ' + classes)
+                .append($badge)
+                .appendTo('#annotation-canvas');
         });
 
-        body.off('contextmenu', '.input-group .timestamp-input')
-            .on('contextmenu', '.input-group .timestamp-input', async function(e) {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                // Get the current time of the video.
-                let currentTime = await self.player.getCurrentTime();
-                $(this).val(self.convertSecondsToHMS(currentTime));
-                $(this).trigger('input');
-            });
+        bind('contextmenu', '.input-group .timestamp-input', async function(e) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            // Get the current time of the video.
+            let currentTime = await self.player.getCurrentTime();
+            $(this).val(self.convertSecondsToHMS(currentTime));
+            $(this).trigger('input');
+        });
 
-        body.on('input', '.input-group :input', function() {
+        bind('input', '.input-group :input', function() {
             let dest = [];
-            $('#destination-list .input-group').each(function() {
+            body.find('#destination-list .input-group').each(function() {
                 const badgeid = $(this).find('.badgeoption').val();
                 const xp = $(this).find('.xp').val() || 0;
                 const position = $(this).find('.positionoption').val();
@@ -833,17 +900,15 @@ export default class RajabsGames extends Base {
                 }
             });
             dest.sort((a, b) => a.timestamp - b.timestamp);
-            // Make sure dest are unique based on timestamps and uniqueid
-            dest = dest.filter((d, i) => {
-                if (i == 0) {
-                    return true;
-                }
-                if (d.timestamp == dest[i - 1].timestamp) {
+            // Keep one position per timestamp and one per unique name: the first in timestamp order wins.
+            const timestamps = new Set();
+            const uniqueids = new Set();
+            dest = dest.filter((d) => {
+                if (timestamps.has(d.timestamp) || uniqueids.has(d.uniqueid)) {
                     return false;
                 }
-                if (d.uniqueid == dest[i - 1].uniqueid) {
-                    return false;
-                }
+                timestamps.add(d.timestamp);
+                uniqueids.add(d.uniqueid);
                 return true;
             });
             // Total XP.
@@ -852,120 +917,55 @@ export default class RajabsGames extends Base {
                 totalxp += Number(d.xp);
             });
             if (dest.length == 0) {
-                $('form [name=content]').val('');
-                $('form [name=xp]').val(0);
+                body.find('form [name=content]').val('');
+                body.find('form [name=xp]').val(0);
             } else {
-                $('form [name=content]').val(JSON.stringify(dest));
-                $('form [name=xp]').val(totalxp);
+                body.find('form [name=content]').val(JSON.stringify(dest));
+                body.find('form [name=xp]').val(totalxp);
             }
         });
 
-        $(document).off('timeupdate.rajabsgames').on('timeupdate.rajabsgames', async function() {
-            // Remove the preview.
-            $('#annotation-canvas #badge-preview').remove();
-
+        // The preview stands for the badge at one time only: any playback removes it.
+        $(document).off('timeupdate.rajabsgames').on('timeupdate.rajabsgames', function() {
+            $('#annotation-canvas .block-rajabsgames-preview').remove();
         });
 
         return {form, event};
     }
 
     /**
-     * Run the interaction
-     * @param {object} annotation The annotation object
+     * Runs the annotation when IV launches it, which for this type shows nothing.
+     *
+     * The games annotation has no timestamp ('hastimestamp' => false): init() shows each badge from
+     * timeupdate, so the player never launches it. The editor still does when its row's title is clicked
+     * (mod_interactivevideo editannotation.js, the 'tr.annotation .title' handler), and the base class
+     * would then render an empty viewer; the badges are previewed from the form's play buttons instead.
+     *
+     * @returns {Promise<void>}
+     */
+    async runInteraction() {
+        // Nothing to render: see the docblock.
+    }
+
+    /**
+     * Called by IV after the annotation is added or edited; the base class runs the interaction, which
+     * this type does not have (see runInteraction()).
+     *
      * @returns {void}
      */
-    async runInteraction(annotation) {
-        // Dismiss all tooltips.
-        $('.tooltip').remove();
-        await this.player.pause();
-        let self = this;
-        let dest = JSON.parse(annotation.content);
-        dest = dest.filter((d) => {
-            return !self.isSkipped(d.timestamp);
-        });
-
-        if (!self.isEditMode()) {
-            annotation.viewed = true;
-            this.annotations = this.annotations.filter((d) => d.id != annotation.id);
-            this.annotations.push(annotation);
-        }
-
-        if (dest.length == 0) {
-            this.player.play();
-            return;
-        }
-
-        let newannotation = JSON.parse(JSON.stringify(annotation));
-        newannotation.content = JSON.stringify(dest);
-        // We don't need to run the render method every time the content is applied. We can cache the content.
-        if (!self.cache[annotation.id] || self.isEditMode()) {
-            self.cache[annotation.id] = await this.render(newannotation, 'json');
-        }
-        const data = self.cache[annotation.id];
-        let $html = `<div class="position-absolute decision text-center mx-auto w-100">
-            <h5 class="pt-5 pb-3 bg-white" id="decision-q">
-            <i class="mb-2 bi bi-signpost-split-fill" style="font-size: 2em"></i><br>${newannotation.formattedtitle}</h5>`;
-
-        data.forEach((dest, order) => {
-            $html += `<a href="javascript:void(0)" data-timestamp="${dest.timestamp}"
-                 data-order="${order}" class="decision-option btn btn-outline-secondary btn-rounded mb-2 d-flex
-                  justify-content-between align-items-center mx-auto"><span class="text-truncate">${dest.title}</span>
-                  <i class="bi bi-chevron-right"></i></a>`;
-        });
-        $html += '</div>';
-        let $message = $(`<div id="message" style="z-index:1005;display:none;" data-id="${annotation.id}" tabindex="0">
-            <div class="modal-body p-0 border" id="content">${$html}</div></div>`);
-        $('#video-wrapper').find("#message").remove();
-        $('#video-wrapper').append($message);
-
-        $message.fadeIn(300, 'swing', async function() {
-            // Set focus on the #message element
-            $('body').addClass('disablekb');
-            document.querySelector(`#message[data-id='${annotation.id}']`).focus();
-            if (annotation.char1 == 1) {
-                $message.append(`<button class="btn btn-secondary btn-rounded position-absolute"
-                     id="close-decision" style="right: 1rem; top: 1rem;">
-                     ${await getString('skip', 'local_ivdecision')}
-                     <i class="iv-ml-2 bi bi-chevron-right"></i></button>`);
-            }
-
-            $(document).off('click', '#close-decision').on('click', '#close-decision', function(e) {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                self.player.play();
-                $('#taskinfo').fadeIn(300);
-                $('[data-region="chapterlists"], #controller').removeClass('no-pointer-events');
-            });
-
-            if (!self.isEditMode()) {
-                $('#taskinfo').fadeOut(300);
-                $('[data-region="chapterlists"], #controller').addClass('no-pointer-events');
-            }
-            await self.player.pause();
-        });
-
-        $(document).off('click', `#message[data-id='${annotation.id}'] .decision-option`)
-            .on('click', `#message[data-id='${annotation.id}'] .decision-option`, function(e) {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                let time = Number($(this).data('timestamp'));
-                if (time < this.start) {
-                    time = this.start;
-                } else if (time > this.end) {
-                    time = this.end;
-                }
-                self.player.seek(time);
-                $(`#message[data-id='${annotation.id}']`).fadeOut(300);
-                self.player.play();
-                $('#taskinfo').fadeIn(300);
-                $('[data-region="chapterlists"], #controller').removeClass('no-pointer-events');
-            });
-    }
-
     postEditCallback() {
-        // Do not do the default post edit callback.
+        // Nothing to run.
     }
 
+    /**
+     * Renders the annotation's row in the editor's list, without inline XP editing: the XP is the sum of
+     * the badges' XP, which only the form computes.
+     *
+     * @param {Array} annotations The annotations array
+     * @param {jQuery} listItem The row
+     * @param {Object} item The annotation
+     * @returns {jQuery} The row
+     */
     renderEditItem(annotations, listItem, item) {
         listItem = super.renderEditItem(annotations, listItem, item);
         listItem.find('[data-editable="xp"]').removeAttr('data-editable');

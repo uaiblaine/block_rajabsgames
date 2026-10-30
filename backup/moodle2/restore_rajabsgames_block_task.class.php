@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * TODO describe file restore_rajabsgames_block_task.class
+ * Restore task of the Rajab's Games block: the block's configuration and its badge images.
  *
  * @package    block_rajabsgames
  * @copyright  2025 Sokunthearith Makara <sokunthearithmakara@gmail.com>
@@ -49,7 +49,8 @@ class restore_rajabsgames_block_task extends restore_block_task {
      * Get configuration data encoded attributes
      */
     public function get_configdata_encoded_attributes() {
-        return []; // We need to encode some attrs in configdata.
+        // The badge list in configdata refers to its images with @@PLUGINFILE@@, which needs no decoding.
+        return [];
     }
 
     /**

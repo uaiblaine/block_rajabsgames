@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * TODO describe file uninstall
+ * Uninstall steps of the Rajab's Games block.
  *
  * @package    block_rajabsgames
  * @copyright  2024 Sokunthearith Makara <sokunthearithmakara@gmail.com>

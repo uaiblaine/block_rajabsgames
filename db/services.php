@@ -29,7 +29,6 @@ defined('MOODLE_INTERNAL') || die();
 $functions = [
     'block_rajabsgames_clear_session' => [
         'classname' => 'block_rajabsgames\external\session',
-        'classpath' => 'blocks/rajabsgames/classes/external/session.php',
         'methodname' => 'execute',
         'description' => 'Clear the session data for a block',
         'type' => 'read',

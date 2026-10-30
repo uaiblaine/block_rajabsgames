@@ -3,7 +3,7 @@
 This fork of [sokunthearithmakara/block_rajabsgames](https://github.com/sokunthearithmakara/block_rajabsgames)
 supports Moodle 5.3 only, on the `MOODLE_503_STABLE` branch. It forked from upstream `779100e` (1.2).
 
-## 1.2+uai.1 (2026100501)
+## 1.2+uai.1 (2026100502)
 
 ### Security
 - The video player reads its state through the `block_rajabsgames_get_video_state` web service, which
@@ -24,6 +24,15 @@ supports Moodle 5.3 only, on the `MOODLE_503_STABLE` branch. It forked from upst
 - Group membership is read once instead of with groups_is_member() per group and per leader: a cold render
   under visible groups went from 129 / 489 / 1,209 queries (10 / 40 / 100 groups) to 15, and under
   separate groups from 25 / 85 / 205 to 5 (300 students, 5 videos, measured on Moodle 5.3).
+
+### Plugins directory baseline
+- Privacy: a null provider (the block keeps no personal data of its own; Interactive video stores the claims and
+  XP), with a compliance test.
+- LICENSE and COPYING.txt; lang/km is export-ignored so only English strings ship; the fleet's
+  marketplace readiness test; a README that names the capability, the dependencies and what is stored where.
+- CI: the fleet's ci.yml (one Moodle 5.3 job through uaiblaine/moodle-workflows, with the private
+  Interactive video dependency) replaces upstream's gha.yml; phpcs and moodle-plugin-ci configuration.
+- Placeholder docblocks replaced; compatibility code for Moodle 4.x removed from the session web service.
 
 ### Changed
 - Supported range narrowed to Moodle 5.3 (`supported = [503, 503]`).

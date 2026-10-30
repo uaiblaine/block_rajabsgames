@@ -17,14 +17,30 @@
 {{!
     @template block_rajabsgames/status
 
-    TODO describe template status
+    The badge status bar the video page shows in its navigation bar and chapter list: each badge with the viewer's claimed and placed counts.
+
+    block_rajabsgames/main (JavaScript) renders it and injects it into the interactive video page;
+    the root carries the plugin's scoping class, and the claim handler updates the counts in place.
+
+    Context variables required for this template:
+    * badges - array of badges: id, name, picture, classes ('filter' greys the picture), mine (claimed),
+      badgecount (placed in this video)
 
     Example context (json):
     {
+        "badges": [
+            {
+                "id": 1700000001,
+                "name": "Explorer",
+                "picture": "https://moodle.example/pluginfile.php/27/block_rajabsgames/content/0/explorer.png",
+                "classes": "filter",
+                "mine": 1,
+                "badgecount": 3
+            }
+        ]
     }
 }}
-
-<div class="block_rajabsgames d-flex align-items-center iv-mr-3">
+<div class="block-rajabsgames block-rajabsgames-status d-flex align-items-center iv-mr-3">
 {{#badges}}
 <div class="iv-mr-3 d-flex flex-column align-items-center rg_badgestatus_item" data-id="{{id}}">
     <img class="rg_badge_picture {{classes}}"
@@ -32,9 +48,9 @@
         alt="{{name}}"
         title="{{name}}"
         width="25"
-        height="25" />
-     <small class="rg_badge_count iv-font-weight-light">
-     <span class="badge-count" data-count="{{mine}}" data-total="{{badgecount}}">{{mine}}</span> / {{badgecount}}</small>
+        height="25">
+    <small class="rg_badge_count iv-font-weight-light">
+    <span class="badge-count" data-count="{{mine}}" data-total="{{badgecount}}">{{mine}}</span> / {{badgecount}}</small>
 </div>
 {{/badges}}
 </div>
