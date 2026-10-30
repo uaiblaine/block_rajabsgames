@@ -23,11 +23,11 @@ defined('MOODLE_INTERNAL') || die();
 
 global $CFG;
 require_once($CFG->libdir . '/upgradelib.php');
-require_once($CFG->dirroot . '/mod/interactivevideo/locallib.php');
 require_once($CFG->dirroot . '/blocks/rajabsgames/db/upgrade.php');
 
 /**
- * How a game item is tracked, and what a badge claim then records.
+ * How a game item is tracked. What a claim records is tested through the claim service
+ * ({@see \block_rajabsgames\external\claim_badge_test}).
  *
  * @package    block_rajabsgames
  * @copyright  2026 Anderson Blaine
@@ -73,72 +73,11 @@ final class completion_tracking_test extends \advanced_testcase {
     }
 
     /**
-     * Claims the first badge the way the player does, and returns the XP stored for the item.
-     *
-     * @param \stdClass $course The course.
-     * @param \stdClass $iv The interactive video instance.
-     * @param int $itemid The game item.
-     * @return float The XP stored in the item's completion detail.
-     */
-    private function claim_first_badge(\stdClass $course, \stdClass $iv, int $itemid): float {
-        global $DB, $USER;
-        $detail = [
-            'id' => $itemid,
-            'xp' => 10,
-            'hasDetails' => false,
-            'gameprogress' => [['id' => 1, 'xp' => 10, 'name' => 'a']],
-        ];
-        \interactivevideo_util::save_progress(
-            $iv->id,
-            $USER->id,
-            json_encode([$itemid]),
-            json_encode($detail),
-            true,
-            'rajabsgames',
-            '',
-            0,
-            50,
-            0,
-            0,
-            10,
-            true,
-            $course->id
-        );
-        $stored = $DB->get_field('interactivevideo_completion', 'completiondetails', ['cmid' => $iv->id, 'userid' => $USER->id]);
-        foreach (json_decode($stored, true) as $entry) {
-            $entry = is_string($entry) ? json_decode($entry, true) : $entry;
-            if ((int)$entry['id'] === $itemid) {
-                return (float)$entry['xp'];
-            }
-        }
-        $this->fail('The claim was not stored.');
-    }
-
-    /**
      * An item that earns XP is tracked as complete; one that earns none is not tracked.
      */
     public function test_the_form_tracks_scored_items_as_complete(): void {
         $this->assertSame('complete', $this->form()->pre_processing_data((object)['xp' => 20])->completiontracking);
         $this->assertSame('none', $this->form()->pre_processing_data((object)['xp' => 0])->completiontracking);
-    }
-
-    /**
-     * One badge claimed in an item tracked as complete records that badge's XP, not the item's.
-     */
-    public function test_a_partial_claim_records_its_own_xp(): void {
-        $this->resetAfterTest();
-        $generator = $this->getDataGenerator();
-        $course = $generator->create_course();
-        $student = $generator->create_and_enrol($course, 'student');
-        $this->setUser($student);
-
-        // The 'manual' item is the control: there the same claim is raised to the item's full XP.
-        $manual = $generator->create_module('interactivevideo', ['course' => $course->id]);
-        $this->assertEquals(20, $this->claim_first_badge($course, $manual, $this->create_item($course, $manual, 'manual')));
-
-        $iv = $generator->create_module('interactivevideo', ['course' => $course->id]);
-        $tracking = $this->form()->pre_processing_data((object)['xp' => 20])->completiontracking;
-        $this->assertEquals(10, $this->claim_first_badge($course, $iv, $this->create_item($course, $iv, $tracking)));
     }
 
     /**

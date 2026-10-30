@@ -33,4 +33,10 @@ $functions = [
         'type' => 'read',
         'ajax' => true,
     ],
+    'block_rajabsgames_claim_badge' => [
+        'classname' => 'block_rajabsgames\external\claim_badge',
+        'description' => 'Claims one badge of a game item for the viewer, graded on the server',
+        'type' => 'write',
+        'ajax' => true,
+    ],
 ];

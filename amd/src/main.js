@@ -39,8 +39,8 @@ export default class RajabsGames extends Base {
      * Outside the editor, and only when the video has a games annotation: fetches the course's badges
      * and the viewer's claims, shows the badge status bar when the annotation asks for it, and shows
      * each unclaimed badge for five seconds from its timestamp (timeupdate), pausing the video when
-     * the annotation asks for it. Clicking a badge claims it, records the XP as the annotation's
-     * completion and clears the block's cached content.
+     * the annotation asks for it. Clicking a badge claims it through the server, which records the
+     * claim and the XP it is worth (claimBadge).
      *
      * @method init
      */
@@ -68,7 +68,7 @@ export default class RajabsGames extends Base {
             let badges = games.content;
             badges = typeof badges === 'string' ? JSON.parse(badges || '[]') : (badges || []);
 
-            let progress = JSON.parse(state.gameprogress || '[]');
+            const progress = JSON.parse(state.gameprogress || '[]');
 
             if (badges.length == 0) {
                 return;
@@ -121,14 +121,6 @@ export default class RajabsGames extends Base {
                 $('.navbar .navigation').prepend(status);
                 $('[data-region="chapterwrapper"] > div').append(status);
             }
-
-            // Check progress for non-existing badges and remove them.
-            progress = progress.filter(x => badges.find(y => y.uniqueid == x.name));
-
-            let cummulatedXP = 0;
-            progress.forEach(x => {
-                cummulatedXP += Number(x.xp);
-            });
 
             let incompletedBadges = badges.filter(x => !x.completed);
 
@@ -226,30 +218,17 @@ export default class RajabsGames extends Base {
                     $(this).remove();
                 });
 
-                // Update the progress to database.
-                let details = {};
-                const completeTime = new Date();
-                let windowAnno = (window.ANNOS || []).find(x => x.id == games.id) ||
-                    {duration: 0, newstarttime: completeTime.getTime()};
-                details.xp = cummulatedXP + Number($(this).data('xp'));
-                cummulatedXP = details.xp;
-                const startTime = windowAnno.newstarttime || completeTime.getTime();
-                details.duration = (windowAnno.duration || 0) + (completeTime.getTime() - startTime);
-                details.timecompleted = completeTime.getTime();
-                details.hasDetails = false;
-                progress.push({
-                    id: $(this).data('id'),
-                    xp: $(this).data('xp'),
-                    name: $(this).data('name'),
-                });
-
-                details.gameprogress = progress;
-                details.completed = details.xp == games.xp;
-                self.toggleCompletion(games.id, 'automatic', details);
-                self.addNotification(await getString('xpearned', 'mod_interactivevideo', Number($(this).data('xp'))), 'success');
+                // The server grades the claim: it names the position, never the XP or the claim list.
+                // Read before the call: the element is removed (and its data with it) once it has faded out.
+                const uniqueid = this.getAttribute('data-name');
+                const xp = Number(this.getAttribute('data-xp'));
+                const result = await self.claimBadge(games, uniqueid);
+                if (result && result.claimed) {
+                    self.addNotification(await getString('xpearned', 'mod_interactivevideo', xp), 'success');
+                }
 
                 // Remove the badge from the list.
-                incompletedBadges = incompletedBadges.filter(x => x.uniqueid != $(this).data('name'));
+                incompletedBadges = incompletedBadges.filter(x => String(x.uniqueid) !== uniqueid);
                 if (incompletedBadges.length == 0) {
                     // Stop showing badges.
                     $(document).off('timeupdate.rajabsgamesplay');
@@ -261,127 +240,67 @@ export default class RajabsGames extends Base {
     }
 
     /**
-     * Toggle completion of an item
-     * @param {number} id The annotation id
-     * @param {string} type The type of completion (manual, automatic)
-     * @param {{}} [details={}] Completion details
-     * @returns {Promise}
+     * Claims one badge through the server, which grades it, then updates the player as a completion would.
+     *
+     * The type is server-graded, so Interactive video's own save refuses it from the browser.
+     *
+     * @param {Object} games The game item (annotation)
+     * @param {String} uniqueid The unique id of the claimed badge position
+     * @returns {Promise<Object|null>} The service's answer, or null when nothing was sent or it failed
      */
-    async toggleCompletion(id, type = 'automatic', details = {}) {
-        let self = this;
-        // Skip if the page is the interactions page or in preview-mode.
+    async claimBadge(games, uniqueid) {
+        const self = this;
         if (self.isEditMode()) {
-            return Promise.resolve(); // Return a resolved promise for consistency
+            return null;
         }
         if (self.isPreviewMode()) {
             self.addNotification(await getString('completionnotrecordedinpreviewmode', 'mod_interactivevideo'));
-            return Promise.resolve(); // Return a resolved promise for consistency
+            return null;
         }
 
-        // Get existing progress so far.
+        let result;
+        try {
+            result = await Ajax.call([{
+                methodname: 'block_rajabsgames_claim_badge',
+                args: {interactivevideoid: self.interaction, itemid: games.id, uniqueid: String(uniqueid)},
+            }])[0];
+        } catch (err) {
+            window.console.error(err);
+            return null;
+        }
+        if (!result.recorded || !result.claimed) {
+            return result;
+        }
+
+        const progress = JSON.parse(result.progress);
         const gradableitems = self.annotations.filter(x => x.hascompletion == '1');
         const totalXp = gradableitems.map(({xp}) => Number(xp)).reduce((a, b) => a + b, 0);
-        let completedItems = gradableitems.filter(({completed}) => completed);
-        let earnedXp = completedItems.map(({earned}) => Number(earned)).reduce((a, b) => a + b, 0);
-
-        completedItems = completedItems.map(({id}) => id);
-
-        // Prepare details.
-        let thisItem = gradableitems.find(({id: itemId}) => itemId == id);
-        let completionDetails = {
-            id,
-        };
-        const completeTime = new Date();
-        completionDetails.hasDetails = details.details ? true : false;
-        if (details.hasDetails) {
-            completionDetails.hasDetails = true;
-        }
-        completionDetails.xp = details.xp || thisItem.xp;
-        completionDetails.timecompleted = details.timecompleted || completeTime.getTime();
-        const completiontime = completeTime.toLocaleString();
-        completionDetails.gameprogress = details.gameprogress || [];
-        completionDetails.reportView = details.reportView ||
-            `<span data-bs-toggle="tooltip" data-bs-html="true"
-                 title='<span class="d-flex flex-column align-items-start"><span><i class="bi bi-calendar iv-mr-2"></i>
-                 ${completiontime}</span></span>'>
-                 <i class="fa fa-${details.completed ? 'check text-success' : 'circle-o text-secondary'} "></i><br>
-                 <span>${Number(completionDetails.xp)}</span></span>`;
-        if (details.completed) {
-            completedItems.push(id.toString());
-        }
-        if (thisItem.earned > 0) { // In case of resubmission.
-            // Remove the earned XP from the total XP.
-            earnedXp -= Number(thisItem.earned);
-        }
-        earnedXp += Number(completionDetails.xp);
-
-        // Make sure the completed items are unique.
-        completedItems = [...new Set(completedItems)];
-
-        let completed;
-        if (Number(self.completionpercentage) > 0) { // Completion percentage is set.
-            completed = (completedItems.length / gradableitems.length) * 100 >= Number(self.completionpercentage) ? 1 : 0;
-        } else {
-            completed = gradableitems.length == completedItems.length ? 1 : 0;
-        }
-        return new Promise((resolve) => {
-            $.ajax({
-                url: `${M.cfg.wwwroot}/mod/interactivevideo/ajax.php`,
-                method: "POST",
-                dataType: "text",
-                data: {
-                    action: 'save_progress',
-                    markdone: 'mark-done',
-                    sesskey: M.cfg.sesskey,
-                    id: self.interaction,
-                    uid: self.userid,
-                    percentage: (completedItems.length / gradableitems.length) * 100,
-                    g: parseFloat((earnedXp / totalXp) * self.grademax).toFixed(2),
-                    gradeiteminstance: self.gradeiteminstance,
-                    c: completed,
-                    xp: earnedXp,
-                    completeditems: JSON.stringify(completedItems),
-                    completiondetails: JSON.stringify(completionDetails),
-                    details: JSON.stringify(details.details || {}),
-                    annotationtype: thisItem.type,
-                    token: self.token,
-                    cmid: self.cm,
-                    completionid: self.completionid,
-                    contextid: thisItem.contextid,
-                    updatestate: self.completionpercentage > 0 || Object.keys(self.extracompletion).length != 0 ? 1 : 0,
-                    courseid: self.course,
-                },
-                success: (res) => {
-                    // Update the annotations array.
-                    const annotations = self.annotations.map(x => {
-                        if (x.id == id) {
-                            x.completed = details.completed ? true : 'pending';
-                            x.earned = completionDetails.xp || 0;
-                        }
-                        return x;
-                    });
-
-                    renderAnnotationItems(annotations, self.start, self.end - self.start);
-                    thisItem.earned = completionDetails.xp || 0;
-                    // Play a popup sound.
-                    let audio = new Audio(M.cfg.wwwroot + '/mod/interactivevideo/sounds/point-awarded.mp3');
-                    audio.play();
-                    self.dispatchEvent('completionupdated', {
-                        annotations,
-                        completionpercentage: (completedItems.length / gradableitems.length) * 100,
-                        grade: parseFloat((earnedXp / totalXp) * self.grademax).toFixed(2),
-                        completed,
-                        xp: earnedXp,
-                        completeditems: completedItems,
-                        target: thisItem,
-                        action: 'mark-done',
-                        type,
-                        response: res,
-                    });
-                    resolve();
-                }
-            });
+        const completeditems = JSON.parse(progress.completeditems || '[]');
+        const annotations = self.annotations.map(x => {
+            if (x.id == games.id) {
+                x.completed = result.completed ? true : 'pending';
+                x.earned = result.xp;
+            }
+            return x;
         });
+        renderAnnotationItems(annotations, self.start, self.end - self.start);
+        games.earned = result.xp;
+
+        let audio = new Audio(M.cfg.wwwroot + '/mod/interactivevideo/sounds/point-awarded.mp3');
+        audio.play();
+        self.dispatchEvent('completionupdated', {
+            annotations,
+            completionpercentage: Number(progress.completionpercentage),
+            grade: totalXp > 0 ? parseFloat((Number(progress.xp) / totalXp) * self.grademax).toFixed(2) : 0,
+            completed: Number(progress.completed || 0),
+            xp: Number(progress.xp),
+            completeditems,
+            target: games,
+            action: 'mark-done',
+            type: 'automatic',
+            response: result.progress,
+        });
+        return result;
     }
 
     /**

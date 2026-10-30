@@ -3,13 +3,19 @@
 This fork of [sokunthearithmakara/block_rajabsgames](https://github.com/sokunthearithmakara/block_rajabsgames)
 supports Moodle 5.3 only, on the `MOODLE_503_STABLE` branch. It forked from upstream `779100e` (1.2).
 
-## 1.2+uai.1 (2026100505)
+## 1.2+uai.1 (2026100506)
 
 ### Security
 - The video player reads its state through the `block_rajabsgames_get_video_state` web service, which
   derives the course from the activity and the user from the session. It replaces `ajax.php`, whose
   `get_completiondetails` action returned any user's progress in any activity to any logged-in user,
   and whose `get_badges` action returned any course's badge configuration.
+- Badge claims are graded on the server. The game type is declared server-graded, so Interactive video
+  refuses its completions from the browser, and the player claims through the new
+  `block_rajabsgames_claim_badge` web service. It accepts only a badge position of the item whose badge
+  is still configured in the course, once, and records as the item's XP the sum of the claimed
+  positions' XP as the item stores them. A learner could before send any claim list and any XP up to
+  the item's total. A claim does not prove the learner reached the badge's moment in the video.
 
 ### Fixed
 - Both leaderboards rank only users with an active enrolment and an active account: suspended or

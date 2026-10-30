@@ -25,6 +25,14 @@ namespace block_rajabsgames;
  */
 class main extends \ivplugin_richtext\main {
     /**
+     * Interactive video refuses this type's completions from the browser; a claim is recorded only through
+     * {@see \block_rajabsgames\external\claim_badge}, which grades it against the item's own positions.
+     *
+     * @var bool
+     */
+    public $servergraded = true;
+
+    /**
      * Get the property.
      */
     public function get_property() {
