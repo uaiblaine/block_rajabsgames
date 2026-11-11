@@ -3,6 +3,13 @@
 This fork of [sokunthearithmakara/block_rajabsgames](https://github.com/sokunthearithmakara/block_rajabsgames)
 supports Moodle 5.3 only, on the `MOODLE_503_STABLE` branch. It forked from upstream `779100e` (1.2).
 
+## 1.2+uai.2 (2026111000)
+
+### Changed
+- Merged upstream `333bea7` (1.2, 2026110300): a claimed badge plays the `point` tone of
+  mod_interactivevideo's `mod_interactivevideo/sound` module; IV 2.4 removed the MP3 it used to load.
+  The fork's server-graded claim path is unchanged. Requires mod_interactivevideo 2026111001.
+
 ## 1.2+uai.1 (2026100507)
 
 ### Security

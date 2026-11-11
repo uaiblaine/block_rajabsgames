@@ -25,12 +25,12 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component    = 'block_rajabsgames';
-$plugin->release      = '1.2+uai.1';
-$plugin->version      = 2026100507;
+$plugin->release      = '1.2+uai.2';
+$plugin->version      = 2026111000;
 $plugin->requires     = 2026100500;
 $plugin->supported    = [503, 503];
 $plugin->maturity     = MATURITY_STABLE;
 $plugin->dependencies = [
-    'mod_interactivevideo' => 2026102900,
+    'mod_interactivevideo' => 2026111001,
     'ivplugin_richtext' => 2024071500,
 ];

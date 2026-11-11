@@ -26,6 +26,7 @@
  */
 import $ from 'jquery';
 import Base from 'mod_interactivevideo/type/base';
+import {play as playSound} from 'mod_interactivevideo/sound';
 import DynamicForm from 'core_form/dynamicform';
 import Template from 'core/templates';
 import {renderAnnotationItems} from 'mod_interactivevideo/viewannotation';
@@ -287,8 +288,7 @@ export default class RajabsGames extends Base {
         renderAnnotationItems(annotations, self.start, self.end - self.start);
         games.earned = result.xp;
 
-        let audio = new Audio(M.cfg.wwwroot + '/mod/interactivevideo/sounds/point-awarded.mp3');
-        audio.play();
+        playSound('point');
         self.dispatchEvent('completionupdated', {
             annotations,
             completionpercentage: Number(progress.completionpercentage),
